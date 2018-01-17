@@ -7,6 +7,7 @@
 
 import os
 import numpy as np
+import random
 
 #Sequence enthalpy/entropy values at 37C-1M NaCl from SANTALUCIA-HICKS paper
 #https://doi.org/10.1146/annurev.biophys.32.110601.141800 - DOI:10.1146/annurev.biophys.32.110601.141800
@@ -80,7 +81,28 @@ TUPLE_ENTROPY  = {  'AA'  : -21.3,
                     'PENL':  6.9
 }
 
+def generate_random_sequence(oligo_length):
+     '''
+     Generate random DNA sequence 
+     '''
+
+def generate_nA(oligo_length):
+     '''
+     Generate AAAAA...AAA
+     '''
+     return 'A'*int(oligo_length)
+
+def generate_nC(oligo_length):
+     '''
+     Generate CCCCC...CCC
+     '''
+     return 'C'*int(oligo_length)
+
 def sequence_to_Tm(sequence):
+     '''
+     Convert sequence to Tm
+     '''
+
      if len(sequence) == 0:
           return None
      elif len(sequence) == 1:
