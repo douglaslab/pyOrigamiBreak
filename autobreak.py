@@ -43,6 +43,56 @@ class OligoBreakSolution:
         self.scores        = None
         self.edges         = None
 
+    def break_oligo_solution(self):
+        '''
+        Break oligo solution
+        '''
+        for current_break in self.breaks[:-1]:
+            current_break.break_cadnano()
+
+    def apply_temp_neighbor_constraints(self):
+        '''
+        Apply neighbor constraints
+        '''
+        for new_break in self.breaks[:-1]:
+
+            #Get neighbor break
+            if new_break.neighbor_break:
+                neighbor_break                 = new_break.neighbor_break
+                neighbor_break.dont_break_temp = True
+
+    def reset_temp_neighbor_constraints(self):
+        '''
+        Reset neighbor constraints
+        '''
+        for new_break in self.breaks[:-1]:
+
+            #Get neighbor break
+            if new_break.neighbor_break:
+                neighbor_break                 = new_break.neighbor_break
+                neighbot_break.dont_break_temp = False
+
+    def calculate_self_penalty(self):
+        '''
+        Calculate self penalty score
+        '''
+        self.self_penalty = 0
+        for new_break in self.breaks[:-1]:
+
+            #Get neighbor break
+            if new_break.neighbor_break:
+                neighbor_break     = new_break.neighbor_break
+                neighbor_oligo     = neighbor_break.oligo
+                
+                if neighbor_break and neighbor_break in self.breaks:
+                    
+                    #Update total penalty score
+                    self.self_penalty += 1
+
+        #Divide penalty by 2
+        self.self_penalty = int(1.0*self.self_penalty/2)
+
+
     def initialize(self):
         '''
         Prepare the lists
@@ -88,6 +138,29 @@ class GroupBreaksolution:
         self.break_solutions = None
         self.total_score     = 0
         self.total_penalty   = 0
+        self.complete        = True
+
+    def break_group_solution(self):
+        '''
+        Break group solution
+        '''
+        for key in self.break_solutions: 
+            #Get break solution
+            break_solution    = self.break_solutions[key]
+            
+            #If the solution doesnt exist move to next break solution
+            if not break_solution:
+                continue
+
+            #Perform break
+            break_solution.break_oligo_solution()
+
+    def print_solution(self):
+        '''
+        Print group solution
+        '''
+        if self.break_solutions:
+            print('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d'%(self.complete,self.total_score,self.total_penalty))
 
     def calculate_penalty(self):
         '''
@@ -95,6 +168,7 @@ class GroupBreaksolution:
         '''
         self.total_score   = 0
         self.total_penalty = 0
+        self.complete      = True
         
         #Iterate over each solution
         for key in self.break_solutions: 
@@ -103,6 +177,7 @@ class GroupBreaksolution:
             
             #If the solution doesnt exist move to next break solution
             if not break_solution:
+                self.complete = False
                 continue
 
             #Update total score
@@ -119,7 +194,8 @@ class GroupBreaksolution:
                     neighbor_break     = new_break.neighbor_break
                     neighbor_oligo_key = neighbor_break.oligo.key
                     
-                    if self.break_solutions[neighbor_oligo_key] and neighbor_break in self.break_solutions[neighbor_oligo_key].breaks:
+                    #Get the neighbor information
+                    if neighbor_oligo_key in self.break_solutions and self.break_solutions[neighbor_oligo_key] and neighbor_break in self.break_solutions[neighbor_oligo_key].breaks:
                         break_solution.bad_list.append(new_break)
 
                         #Update total penalty score
@@ -139,20 +215,46 @@ class OligoGroup:
         '''
         Oligo group connected to each other through break point neighborship
         '''
+        self.key                   = None
         self.oligos                = None
         self.breaks                = None
         self.group_solutions       = None
         self.best_score_solution   = None
         self.best_penalty_solution = None
+    
+    def remove_incomplete_solutions(self):
+        '''
+        Remove incomplete group solutions
+        '''
+        self.group_solutions = list(filter(lambda x:x.complete,self.group_solutions))
 
-    def create_group_solutions(self,num_solutions=200):
+    def shuffle_oligos(self):
+        '''
+        Shuffle oligos
+        '''
+        random.shuffle(self.oligos)
+
+    def sort_oligos_by_length(self):
+        '''
+        Sort oligos by length
+        '''
+        self.oligos.sort(key=lambda x:x.length)
+
+    def reset_temp_neighbor_constraints(self):
+        '''
+        Reset temporary neighbor constraints
+        '''
+        for oligo in self.oligos:
+            oligo.reset_temp_neighbor_constraints()
+
+    def combine_oligo_solutions(self,num_global_solutions=200):
         '''
         Create random group solutions
         '''
         #Initialize group solutions
         self.group_solutions = []
 
-        for i in range(num_solutions):
+        for i in range(num_global_solutions):
             #Initialize group break solution
             new_group_solution = GroupBreaksolution()
             new_group_solution.break_solutions = {}
@@ -162,10 +264,62 @@ class OligoGroup:
                 if len(oligo.break_solutions) > 0:
                     new_group_solution.break_solutions[oligo.key]  = random.choice(oligo.break_solutions)
                 else:
-                     new_group_solution.break_solutions[oligo.key] = None
+                    new_group_solution.break_solutions[oligo.key] = None
 
             #Calculate the penalties for each group solution
             new_group_solution.calculate_penalty()
+
+            #Add solution to list
+            self.group_solutions.append(new_group_solution)
+
+    def create_stepwise_oligo_solutions(self,num_oligo_solutions=100,num_global_solutions=500, pick_method='random', shuffle_oligos=True):
+        '''
+        Create stepwise oligo solutions
+        '''
+        
+        #Initialize group solutions
+        self.group_solutions = []
+        
+        #Number of solutions
+        for i in range(num_global_solutions):
+
+            #Reset temporary neighbor constraints
+            self.reset_temp_neighbor_constraints()
+
+            #Initialize group break solution
+            new_group_solution = GroupBreaksolution()
+            new_group_solution.break_solutions = {}
+
+            #Shuffle oligos
+            if shuffle_oligos:
+                self.shuffle_oligos()
+
+            for oligo in self.oligos:
+                #If oligo has dont break flag, skip
+                if oligo.dont_break:
+                    continue
+
+                #1. Create shortest paths
+                oligo.generate_shortest_paths(num_oligo_solutions)
+
+                #2. Remove penalized solutions
+                oligo.remove_penalized_solutions()
+
+                #3. Pick a solution
+                chosen_solution = oligo.pick_break_solution(pick_method)
+
+                #4. Assign solution
+                new_group_solution.break_solutions[oligo.key] = chosen_solution 
+
+                #5. Apply temporary neighbor constraints
+                if chosen_solution:
+                    chosen_solution.apply_temp_neighbor_constraints()
+
+            #Calculate the penalties for each group solution
+            new_group_solution.calculate_penalty()
+
+            #Print new group solution
+            new_group_solution.print_solution()
 
             #Add solution to list
             self.group_solutions.append(new_group_solution)
@@ -190,9 +344,9 @@ class OligoGroup:
         '''
         Print solutions
         '''
-        for solution in self.group_solutions:
-            print(solution.total_score,solution.total_penalty)
-
+        for group_solution in self.group_solutions:
+            group_solution.print_solution()
+            
 
 class Strand:
     def __init__(self):
@@ -280,6 +434,34 @@ class Oligo:
         self.initial_score       = 0
         self.end_to_end_edge     = None
 
+        #Break solutions
+        self.break_solutions       = []
+        self.chosen_solution       = None
+        self.best_score_solution   = None
+        self.best_penalty_solution = None
+
+    def pick_break_solution(self,method='best'):
+        '''
+        Pick a break solution
+        '''
+        
+        #Sort solutions by score
+        self.sort_solutions_by_score()
+
+        if len(self.break_solutions) == 0:
+            return None
+
+        if method == 'best':
+            return self.break_solutions[0]
+        else:
+            return random.choice(self.break_solutions)
+
+    def sort_solutions_by_score(self):
+        '''
+        Sort solutions by score
+        '''
+        self.break_solutions.sort(key=lambda x:x.score,reverse=True)
+
     def get_initial_score(self):
         '''
         Get the initial score before the oligo is broken
@@ -311,6 +493,12 @@ class Oligo:
         #Assign the score
         self.initial_score = new_edge.edge_weight
 
+    def remove_penalized_solutions(self):
+        '''
+        Remove solutions with non-zero self penalty score
+        '''
+        self.break_solutions = list(filter(lambda x:x.self_penalty == 0, self.break_solutions))
+
     def keep_best_break_solutions(self):
         '''
         Keep best break solutions
@@ -325,16 +513,15 @@ class Oligo:
         #Get the maximum score
         self.max_score = self.break_solutions[0].score
 
-        #Find the first index that has a lower score
-        max_valid_index = len(self.break_solutions)
+        #Remove the solutions that have less score than the max score
+        self.break_solutions = list(filter(lambda x:x.score == self.max_score, self.break_solutions))
 
-        for i in range(len(self.break_solutions)):
-            if self.break_solutions[i].score < self.max_score:
-                max_valid_index = i
-                break
-
-        #Keep only the solutions with maximum score
-        self.break_solutions = self.break_solutions[:max_valid_index] 
+    def reset_temp_neighbor_constraints(self):
+        '''
+        Reset temporary neighbor constraints
+        '''
+        for current_break in self.breaks:
+            current_break.dont_break_temp = False
 
     def reset_break_order_ids(self,start_break,final_break):
         '''
@@ -379,7 +566,7 @@ class Oligo:
         k_select = self.origami.autobreak.k_select
 
         #Show oligo being processed
-        print('Oligo: ',self.key,'Number of breaks: %d'%(len(self.breaks)))
+        print('Processing oligo:%-15s Number of breaks:%-3d'%(self.key,len(self.breaks)))
 
         if self.dont_break:
             self.break_solutions = []
@@ -398,7 +585,10 @@ class Oligo:
         if self.circular:
             
             for current_break in self.breaks:
-            
+                #Check the constraints. If not allowed to break, skip
+                if current_break.dont_break or current_break.dont_break_temp:
+                    continue
+
                 #Reset break path variables
                 self.reset_break_paths()
                 #Reset break id numbers
@@ -424,7 +614,12 @@ class Oligo:
             self.break_solutions += shortest_k_paths
 
         #If number of solutions is 1 then remove the worse results
-        self.keep_best_break_solutions()
+        if num_solutions == 1:
+            self.keep_best_break_solutions()
+
+        #Calculate self penalty scores for the solutions
+        for break_solution in self.break_solutions:
+            break_solution.calculate_self_penalty()
 
     def reset_break_paths(self):
         for current_break in self.breaks:
@@ -461,6 +656,12 @@ class Origami:
         self.scaffolds     = None
         self.idnums        = None 
 
+    def sort_staples_by_length(self):
+        '''
+        Sort oligos by length
+        '''
+        self.oligos['staple'].sort(key=lambda x:x.length)
+
     def set_sequence_file(self,sequence_file=None):
         '''
         Set sequence filename
@@ -483,6 +684,9 @@ class Origami:
         #Read scaffolds and staples
         self.read_staples()
 
+        #Sort staple by length
+        self.sort_staples_by_length()
+
         #Generate crossovers
         self.generate_crossovers()
         
@@ -495,18 +699,30 @@ class Origami:
         #Cluster break points
         self.cluster_oligo_groups()
 
-    def get_cadnano_strand(vh,idx,direction):
+    def get_cadnano_strand(self,vh,idx,direction):
         '''
         Get cadnano strand from vh, idx, direction information
         '''
         return self.part.getStrand(direction>0, vh, idx)
 
-    def split_cadnano_strand(vh,idx,direction):
+    def split_cadnano_strand(self,vh,idx,direction):
         '''
         Split cadnano strand at vh, idx, direction
         '''
         new_strand = self.part.getStrand(direction>0, vh, idx)
-        new_strand.split(idx)
+        
+        #Break only if it is a valid strand
+        if new_strand:
+            new_strand.split(idx)
+
+    def remove_cadnano_crossover(self,vh,idx,direction):
+        '''
+        Remove cadnano crossover
+        '''
+        strand5p = self.part.getStrand(direction>0, vh, idx)
+        strand3p = strand5p.connection3p()
+
+        self.part.removeXover(strand5p, strand3p)
 
     def initialize(self,input_filename):
         #Initialize cadnano
@@ -749,6 +965,7 @@ class Origami:
             oligo.null_break.sequence    = current_strand.sequences[0]
             oligo.null_break.oligo       = oligo
             oligo.null_break.order_id    = order_id_counter
+            oligo.null_break.origami     = self
 
             #Add null oligo to break list
             oligo.breaks.append(oligo.null_break)
@@ -779,6 +996,7 @@ class Origami:
                     new_break.distance    = current_strand.distance + break_position + 1
                     new_break.key         = (new_break.vh,new_break.idx,new_break.direction)
                     new_break.order_id    = order_id_counter
+                    new_break.origami     = self
 
                     #Assign sequence to break object
                     new_break.sequence    = current_strand.sequences[sequence_id]
@@ -863,6 +1081,9 @@ class Origami:
         #Initialize oligo groups
         self.oligo_groups = []
 
+        #Group key
+        group_key = 0
+
         for current_break in self.breaks:
             if not current_break.visited:
                 #Create new oligo group
@@ -883,8 +1104,14 @@ class Origami:
                     new_oligo.oligo_group = new_oligo_group
 
                 #Assign breaks and oligos to oligo group
-                new_oligo_group.breaks = visited_breaks
-                new_oligo_group.oligos = visited_oligos
+                new_oligo_group.breaks = list(visited_breaks)
+                new_oligo_group.oligos = list(visited_oligos)
+
+                #Assign group key
+                new_oligo_group.key    = group_key
+                
+                #Update oligo group key
+                group_key += 1
 
                 #Add oligo group to the list
                 self.oligo_groups.append(new_oligo_group)
@@ -969,7 +1196,7 @@ class Origami:
             #Assign random sequence
             for scaffold in self.scaffolds:
 
-                scaffold.length
+                self.scaffold_sequence = utilities.generate_nC(scaffold.length())
                 scaffold.applySequence(self.scaffold_sequence)
 
 
@@ -1031,6 +1258,14 @@ class AutoBreak:
         #Break rule
         self.break_rule                      = ['cross','long']
         
+        #Optimization parameters
+        self.optim_shuffle_oligos            = False
+        self.optim_pick_method               = 'random'
+
+        #Output file
+        self.json_output                     = 'out.json'
+        self.output_directory                = '.'
+
         #Optimization function
         self.optim_args                      = [['14'],['glength','45','5']]
 
@@ -1060,6 +1295,61 @@ class AutoBreak:
                                                 'gTm'    :[self.optim_Tm_mean    ,self.optim_Tm_tolerance]}
 
 
+    def preprocess_optim_params(self):
+        '''
+        Preprocess optimization parameters
+
+
+        RULE1. If there is no cross in break rule, 
+               make oligo solution and global solution number 1
+               since Optimization yields the best result
+
+        RULE2. If oligo solution number is 1,
+               There is no need for making global solution number higher than 1
+        '''
+        
+        if not 'cross' in self.break_rule:
+            self.NUM_OLIGO_SOLUTIONS  = 1
+            self.NUM_GLOBAL_SOLUTIONS = 1 
+        
+        if self.NUM_OLIGO_SOLUTIONS == 1:
+            self.NUM_GLOBAL_SOLUTIONS = 1
+
+    def set_output_directory(self,output_directory):
+        '''
+        Set output directory
+        '''
+        self.output_directory = output_directory
+
+    def define_json_output(self):
+        '''
+        Define json output
+        '''
+        
+        #Split input file
+        head, tail       = os.path.split(self.origami.json_input)
+        root, ext        = os.path.splitext(tail)
+    
+        #Output file
+        self.json_output = self.output_directory+'/'+root+'_autobreak.json'
+
+    def write_part_to_json(self):
+        '''
+        Write cadnano part to json
+        '''
+        self.origami.doc.writeToFile(self.json_output,legacy=True)
+
+    def set_pick_method(self,pick_method='random'):
+        '''
+        Set solution picking method
+        '''
+        self.optim_pick_method = pick_method
+
+    def set_oligo_shuffle_parameter(self,oligo_shuffle_parameter=False):
+        '''
+        Set oligo shuffle parameter
+        '''
+        self.optim_shuffle_oligos = oligo_shuffle_parameter
 
     def set_solution_nums(self,solutions_per_oligo=1000,global_solutions=1000):
         '''
@@ -1085,20 +1375,54 @@ class AutoBreak:
         '''
         Run basic autobreak protocol
         '''
+
+        #Define json output
+        self.define_json_output()
+
         #Make break-break graph
         self.initialize()
 
         #Determine initial scores
         self.determine_initial_scores()
 
+        #Create stepwise group solutions
+        self.create_stepwise_group_solutions()
+
+        #Sort and print group solutions
+        self.sort_group_solutions()
+
+        #Combine group solutions
+        self.combine_group_solutions()
+
+        #Break best solutions
+        self.break_best_solutions()
+
+    def create_independent_group_solutions(self):
+        '''
+        Create independent group solution
+        No temporary neighbor constraints are imposed during run
+        '''
+
         #Break oligos
         self.create_oligo_solutions()
 
         #Create group solutions
-        self.create_group_solutions()
+        self.combine_oligo_solutions()
 
-        #Sort and print group solutions
-        self.sort_group_solutions()
+    def create_stepwise_group_solutions(self):
+        '''
+        Main function for solution determination 
+        '''
+
+        for oligo_group in self.origami.oligo_groups:
+            #Sort oligos by length
+            oligo_group.sort_oligos_by_length()
+            
+            #Create solutions via stepwise approach
+            oligo_group.create_stepwise_oligo_solutions(self.NUM_OLIGO_SOLUTIONS, self.NUM_GLOBAL_SOLUTIONS, self.optim_pick_method, self.optim_shuffle_oligos)
+            
+            #Remove incomplete solutions
+            oligo_group.remove_incomplete_solutions()
 
     def initialize(self):
         '''
@@ -1154,6 +1478,13 @@ class AutoBreak:
                     next_break = next_break.next_break
 
 
+    def reset_temp_neighbor_constraints(self):
+        '''
+        Reset temporary neighbor constraints
+        '''
+        for oligo in self.origami.oligos['staple']:
+            oligo.reset_temp_neighbor_constraints()
+
     def determine_initial_scores(self):
         '''
         Determine starting scores
@@ -1168,13 +1499,14 @@ class AutoBreak:
         for oligo in self.origami.oligos['staple']:
             if not oligo.dont_break:
                 oligo.generate_shortest_paths(self.NUM_OLIGO_SOLUTIONS)
+                oligo.remove_penalized_solutions()
 
-    def create_group_solutions(self):
+    def combine_oligo_solutions(self):
         '''
         Create oligo group solutions
         '''
         for oligo_group in self.origami.oligo_groups:
-            oligo_group.create_group_solutions(self.NUM_GLOBAL_SOLUTIONS)
+            oligo_group.combine_oligo_solutions(self.NUM_GLOBAL_SOLUTIONS)
 
     def sort_group_solutions(self):
         '''
@@ -1182,27 +1514,31 @@ class AutoBreak:
         '''
         for oligo_group in self.origami.oligo_groups:
             oligo_group.sort_solutions()
+            oligo_group.print_solutions()
             
     def combine_group_solutions(self):
         '''
         Combine group solutions
         '''
-        self.best_score_solutions   = []
-        self.best_penalty_solutions = []
+        self.best_score_solutions   = {}
+        self.best_penalty_solutions = {}
 
         for oligo_group in self.origami.oligo_groups:
             
             #Add the best and best penalty solutions
-            self.best_score_solutions.append(oligo_group.best_score_solution)
-            self.best_penalty_solutions.append(oligo_group.best_penalty_solution)
+            self.best_score_solutions[oligo_group.key]   = oligo_group.best_score_solution
+            self.best_penalty_solutions[oligo_group.key] = oligo_group.best_penalty_solution
 
-    def break_oligos(self):
+    def break_best_solutions(self):
         '''
         Oligo breaking routine
         '''
-        
+        for key in self.best_score_solutions:
 
-        
+            #Break group solution
+            self.best_score_solutions[key].break_group_solution()
+
+
 
     def set_optimization_func(self,func_args):
         '''
@@ -1311,7 +1647,8 @@ class BreakEdge:
         '''
         Determine if edge is valid
         '''
-        return self.active and not self.current_break.dont_break and not self.next_break.dont_break
+        return self.active and not self.current_break.dont_break      and not self.next_break.dont_break \
+                           and not self.current_break.dont_break_temp and not self.next_break.dont_break_temp
 
     def make_connection(self,from_break,to_break):
         '''
@@ -1431,6 +1768,7 @@ class BreakNode:
         self.active           = True
         self.break_state      = None  #broken for break,  not-broken for no break
         self.dont_break       = False #If set to True, keep the break not-broken
+        self.dont_break_temp  = False #Transient version of dont_break. If set to True, keep the break not-broken 
 
         #Cluster info
         self.oligo_group      = None
@@ -1531,7 +1869,6 @@ class BreakNode:
             #Get the last best path
             last_solution = self.k_shortest_paths[-1]
 
-
             #Iterate through the edges
             for i in range(len(last_solution.edges[:-1])):
                 #Inactive edge list
@@ -1555,15 +1892,15 @@ class BreakNode:
                 #Get sub solution
                 sub_solution = last_solution.breaks[i].get_shortest_paths(final_break,num_solutions=1)
                 
+                #Make the edges active again
+                for edge in inactive_edges:
+                    edge.active = True
+
                 #If there is no solution continue
                 if len(sub_solution) == 0:
                     continue
 
                 sub_solution[0].initialize()
-
-                #Make the edges active again
-                for edge in inactive_edges:
-                    edge.active = True
 
                 #Get final score from last solution
                 pre_score = last_solution.scores[:i][-1] if len(last_solution.scores[:i]) > 0 else 0
@@ -1622,7 +1959,7 @@ class BreakNode:
 
         #Initialize the set and stack
         stack = [self]
-        
+
         while stack:
             #Pop the break node
             new_break = stack.pop(0)
@@ -1678,7 +2015,7 @@ class BreakNode:
         return final_break.shortest_paths
 
     def traverse_best_paths(self, start_break, num_solutions=1):
-        
+
         #Initialize shortest path
         self.shortest_paths = []
 
@@ -1753,6 +2090,15 @@ class BreakNode:
 
         return self.connected_breaks
 
+    def break_cadnano(self):
+        '''
+        Break the breaknode
+        '''
+        if self.type == 'crossover':
+            self.origami.remove_cadnano_crossover(self.vh,self.idx,self.direction)
+        else:
+            self.origami.split_cadnano_strand(self.vh,self.idx,self.direction)
+
     def depth_first_search(self):
         '''
         Depth-first-search graph traverse algorithm to find connected components
@@ -1800,27 +2146,40 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-i",   "--input",    type=str,     help="Cadnano json file" )
+    parser.add_argument("-u"   ,"--output",   type=str,     help="Output directory",    default='.')
     parser.add_argument("-s",   "--sequence", type=str,     help="Sequence file in txt", default=None )
     parser.add_argument("-r",   "--rule",     type=str,     help="Break rule",default='cross.long')
-    parser.add_argument("-f",   "--func",     type=str,     help="Optimization function", default='14.glength:45:10')
-    parser.add_argument("-o",   "--osol",     type=int,     help="Solutions per oligo", default=1000)
-    parser.add_argument("-g",   "--gsol",     type=int,     help="Global solutions", default=1000)
-    parser.add_argument("-k",   "--kselect",  type=str,     help="selection method for k-shortest path", choices=['best','random'],default='best')
+    parser.add_argument("-f",   "--func",     type=str,     help="Optimization function", default='14.glength:45:5')
+    parser.add_argument("-o",   "--osol",     type=int,     help="Solutions per oligo", default=100)
+    parser.add_argument("-g",   "--gsol",     type=int,     help="Global solutions", default=10)
+    parser.add_argument("-k",   "--kselect",  type=str,     help="Selection method for k-shortest path", choices=['best','random'],default='best')
+    parser.add_argument("-p",   "--pmethod",  type=str,     help="Method for stepwise break solution picking", choices=['best','random'],default='random')
+    parser.add_argument("-l",   "--shuffle",  action='store_true', help="Shuffle oligos during stepwise solution determination")
 
     args = parser.parse_args()
 
     #Assign the parameters
     input_filename          = args.input
+    output_directory        = args.output
     sequence_filename       = args.sequence 
     break_rule              = parse_break_rule(args.rule)
     optimization_func       = parse_optim_function(args.func)
     sols_per_oligo          = args.osol
     global_solutions        = args.gsol
     k_selection_method      = args.kselect
+    pick_method             = args.pmethod
+    shuffle_oligos          = args.shuffle
 
     #Check if input file exists
     if not os.path.isfile(input_filename):
         sys.exit('Input file does not exist!')
+
+    #Check if output directory exists
+    if not os.path.isdir(output_directory):
+        sys.exit('Output directory does not exist!')
+
+    #Set random seed in order to get the same results with the same set of parameters
+    random.seed(0)
 
     #Create Origami object
     new_origami = Origami()
@@ -1835,14 +2194,26 @@ def main():
     #Assign break rule
     new_autobreak.set_break_rule(break_rule)
 
-    #Set optimization function
-    new_autobreak.set_optimization_func(optimization_func)
+    #Set output directory
+    new_autobreak.set_output_directory(output_directory)
 
     #Set solution numbers
     new_autobreak.set_solution_nums(sols_per_oligo,global_solutions)
 
+    #Set optimization function
+    new_autobreak.set_optimization_func(optimization_func)
+
     #Set k-shortest path selection method
     new_autobreak.set_k_select(k_selection_method)
+
+    #Set solution picking method
+    new_autobreak.set_pick_method(pick_method)
+
+    #Set oligo shuffle parameter
+    new_autobreak.set_oligo_shuffle_parameter(shuffle_oligos) 
+
+    #Preprocess optimization parameters
+    new_autobreak.preprocess_optim_params()
 
     #Initialize origami object
     new_origami.initialize(input_filename)
@@ -1856,6 +2227,8 @@ def main():
     #Run autobreak
     new_autobreak.run_autobreak()
 
+    #Write result to json
+    new_autobreak.write_part_to_json()
 
 if __name__ == "__main__":
   main()
