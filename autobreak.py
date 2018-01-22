@@ -41,7 +41,7 @@ class OligoBreakSolution:
         self.bad_list      = None
         self.breaks        = None
         self.scores        = None
-        self.edges         = None
+        self.edges         = None            
 
     def break_oligo_solution(self):
         '''
@@ -455,6 +455,7 @@ class Oligo:
             return self.break_solutions[0]
         else:
             return random.choice(self.break_solutions)
+
 
     def sort_solutions_by_score(self):
         '''
@@ -2151,7 +2152,7 @@ def main():
     parser.add_argument("-r",   "--rule",     type=str,     help="Break rule",default='cross.long')
     parser.add_argument("-f",   "--func",     type=str,     help="Optimization function", default='14.glength:45:5')
     parser.add_argument("-o",   "--osol",     type=int,     help="Solutions per oligo", default=100)
-    parser.add_argument("-g",   "--gsol",     type=int,     help="Global solutions", default=10)
+    parser.add_argument("-g",   "--gsol",     type=int,     help="Global solutions", default=5)
     parser.add_argument("-k",   "--kselect",  type=str,     help="Selection method for k-shortest path", choices=['best','random'],default='best')
     parser.add_argument("-p",   "--pmethod",  type=str,     help="Method for stepwise break solution picking", choices=['best','random'],default='random')
     parser.add_argument("-l",   "--shuffle",  action='store_true', help="Shuffle oligos during stepwise solution determination")
