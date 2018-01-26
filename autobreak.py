@@ -1398,7 +1398,7 @@ class AutoBreak:
         '''
         Write cadnano part to json
         '''
-        self.origami.doc.writeToFile(self.json_output, legacy=True)
+        self.origami.doc.writeToFile(self.json_output)
 
     def set_pick_method(self, pick_method='random'):
         '''
@@ -1763,14 +1763,14 @@ class BreakEdge:
         if len(self.sequence_list) == 1:
             start_point  = self.current_break.break_point+1
             final_point  = self.next_break.break_point+1
-            dna_sequence = self.current_break.sequence.dna[start_point:final_point]
+            dna_sequence = self.current_break.strand.dna[start_point:final_point]
 
             self.dna_list.append(dna_sequence)
         else:
             # 1. Get the 5' sequence
             start_point  = self.current_break.break_point+1
             final_point  = self.current_break.sequence.strHigh+1
-            dna_sequence = self.current_break.sequence.dna[start_point:final_point]
+            dna_sequence = self.current_break.strand.dna[start_point:final_point]
 
             self.dna_list.append(dna_sequence)
             # 2. Get the sequences in between
@@ -1780,7 +1780,7 @@ class BreakEdge:
             # 3. Get the 3' sequence
             start_point  = self.next_break.sequence.strLow
             final_point  = self.next_break.break_point+1
-            dna_sequence = self.next_break.sequence.dna[start_point:final_point]
+            dna_sequence = self.next_break.strand.dna[start_point:final_point]
 
             self.dna_list.append(dna_sequence)
 
@@ -2200,11 +2200,11 @@ class BreakNode:
 
         return list(visited)
 
+
 # Parse functions
 
-
 def parse_break_rule(break_rule):
-    '''
+    '''m
     Parse break rule
     '''
     return break_rule.split('.')
