@@ -435,6 +435,22 @@ class Oligo:
         self.best_score_solution   = None
         self.best_penalty_solution = None
 
+    def break_in_half(self):
+        '''
+        Break the oligo in half
+        '''
+
+        # Get the median break
+        median_break_num  = round(0.5*len(self.breaks))
+        self.median_break = self.breaks[median_break_num]
+
+        # If the oligo is circular break the first and middle breaks
+        if self.circular:
+            self.start_break.break_cadnano()
+            self.median_break.break_cadnano()
+        else:
+            self.median_break.break_cadnano()
+
     def pick_break_solution(self, method='best'):
         '''
         Pick a break solution
@@ -655,6 +671,16 @@ class Origami:
         self.scaffolds     = None
         self.idnums        = None
 
+        # Keeps whether very long staples exist
+        self.very_long_staples_exist      = True
+        self.dont_break_very_long_staples = False
+
+    def set_dont_break_very_long_staples(self, value=False):
+        '''
+        Set break very long staples
+        '''
+        self.dont_break_very_long_staples = value
+
     def sort_staples_by_length(self):
         '''
         Sort oligos by length
@@ -666,6 +692,33 @@ class Origami:
         Set sequence filename
         '''
         self.sequence_file = sequence_file
+
+    def break_very_long_staples(self):
+        '''
+        Break very long oligos
+        '''
+        if self.dont_break_very_long_staples:
+            return
+
+        for oligo in self.oligos['staple']:
+            if len(oligo.breaks) > self.autobreak.max_num_breaks:
+                oligo.break_in_half()
+
+    def is_there_very_long_staples(self):
+        '''
+        Returns whether there are any very long staples
+        '''
+        return self.very_long_staples_exist
+
+    def check_very_long_staples(self):
+        '''
+        Check if there is any long staples
+        '''
+        self.very_long_staples_exist = False
+        for oligo in self.oligos['staple']:
+            if len(oligo.breaks) > self.autobreak.max_num_breaks:
+                self.very_long_staples_exist = True
+                break
 
     def prepare_origami(self):
         '''
@@ -695,8 +748,11 @@ class Origami:
         # Generate break points
         self.generate_break_points()
 
-        # Cluster break points
-        self.cluster_oligo_groups()
+        # Break long staples
+        self.break_very_long_staples()
+
+        # Check if there are very long staples
+        self.check_very_long_staples()
 
     def get_cadnano_strand(self, vh, idx, direction):
         '''
@@ -1260,6 +1316,9 @@ class AutoBreak:
 
         # Break rule
         self.break_rule                      = ['cross', 'long']
+
+        # Maximum number of breaks allowed per oligo for autobreak
+        self.max_num_breaks                  = 70
 
         # Optimization parameters
         self.optim_shuffle_oligos            = False
@@ -2198,6 +2257,9 @@ def main():
     parser.add_argument("-l",   "--shuffle",  action='store_true',
                         help="Shuffle oligos during stepwise solution determination")
 
+    parser.add_argument("-d",   "--dontbreaklong",  action='store_true',
+                        help="Dont break very long oligos that have more X number of breaks")
+
     args = parser.parse_args()
 
     # Assign the parameters
@@ -2210,7 +2272,8 @@ def main():
     global_solutions        = args.gsol
     k_selection_method      = args.kselect
     pick_method             = args.pmethod
-    shuffle_oligos          = args.shuffle
+    shuffle_oligos               = args.shuffle
+    dont_break_very_long_staples = args.dontbreaklong
 
     # Check if input file exists
     if not os.path.isfile(input_filename):
@@ -2263,8 +2326,16 @@ def main():
     # Set sequence filename
     new_origami.set_sequence_file(sequence_filename)
 
-    # Prepare origami for autobreak
-    new_origami.prepare_origami()
+    # Set break very long staples
+    new_origami.set_dont_break_very_long_staples(dont_break_very_long_staples)
+
+    while new_origami.is_there_very_long_staples():
+
+        # Prepare origami for autobreak
+        new_origami.prepare_origami()
+
+    # Cluster staples
+    new_origami.cluster_oligo_groups()
 
     # Run autobreak
     new_autobreak.run_autobreak()
