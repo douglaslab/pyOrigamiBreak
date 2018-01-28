@@ -444,9 +444,12 @@ class Oligo:
         median_break_num  = round(0.5*len(self.breaks))
         self.median_break = self.breaks[median_break_num]
 
+        # Get the first break in the list
+        start_break       = self.breaks[0]
+
         # If the oligo is circular break the first and middle breaks
         if self.circular:
-            self.start_break.break_cadnano()
+            start_break.break_cadnano()
             self.median_break.break_cadnano()
         else:
             self.median_break.break_cadnano()
