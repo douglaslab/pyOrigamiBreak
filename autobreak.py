@@ -48,6 +48,14 @@ class OligoBreakSolution:
                 neighbor_break                 = new_break.neighbor_break
                 neighbor_break.dont_break_temp = True
 
+    def print_solution(self):
+        '''
+        Print break solution
+        '''
+        if self.breaks:
+            print('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" % 
+                  (current_break.key) for current_break in self.breaks[::-1]]))
+
     def reset_temp_neighbor_constraints(self):
         '''
         Reset neighbor constraints
@@ -149,6 +157,9 @@ class GroupBreaksolution:
         if self.break_solutions:
             print('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
                   (self.complete, self.total_score, self.total_penalty))
+            # Print the solutions 
+            for oligo_key in self.break_solutions:
+                self.break_solutions[oligo_key].print_solution()
 
     def calculate_penalty(self):
         '''
@@ -1401,7 +1412,7 @@ class AutoBreak:
         '''
         Write cadnano part to json
         '''
-        self.origami.doc.writeToFile(self.json_output)
+        self.origami.doc.writeToFile(self.json_output, legacy=True)
 
     def set_pick_method(self, pick_method='random'):
         '''
