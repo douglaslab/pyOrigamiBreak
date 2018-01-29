@@ -53,8 +53,10 @@ class OligoBreakSolution:
         Print break solution
         '''
         if self.breaks:
-            print('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" % 
-                  (current_break.key) for current_break in self.breaks[::-1]]))
+            print('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" %
+                  (current_break.key) for current_break in self.breaks]))
+            print('Edge length/weight: '+'->'.join(['(%d / %.1f)' %
+                  (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]))
 
     def reset_temp_neighbor_constraints(self):
         '''
@@ -157,7 +159,7 @@ class GroupBreaksolution:
         if self.break_solutions:
             print('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
                   (self.complete, self.total_score, self.total_penalty))
-            # Print the solutions 
+            # Print the solutions
             for oligo_key in self.break_solutions:
                 self.break_solutions[oligo_key].print_solution()
 
@@ -759,6 +761,9 @@ class Origami:
         # Generate sequences
         self.generate_sequences()
 
+        # Apply break rules
+        self.apply_break_rules()
+
         # Generate break points
         self.generate_break_points()
 
@@ -859,9 +864,6 @@ class Origami:
             new_strand.length             = new_strand.direction*(new_strand.idx3p-new_strand.idx5p)+1
             new_strand.distance           = previous_strand.distance + previous_strand.length
             new_strand.origami            = self
-
-            # Prepare the break points
-            new_strand.apply_break_rule()
 
             # Make the strand connection
             previous_strand.next_strand = new_strand
@@ -1005,6 +1007,21 @@ class Origami:
             if oligo.circular:
                 previous_sequence.next_sequence = oligo.null_strand.next_strand.sequences[0]
 
+    def apply_break_rules(self):
+        '''
+        Apply break rules
+        '''
+        for oligo in self.oligos['staple']:
+            # Assign current strand
+            current_strand = oligo.null_strand.next_strand
+
+            while current_strand:
+                # Apply the break rules
+                current_strand.apply_break_rule()
+
+                # Update current strand
+                current_strand   = current_strand.next_strand
+
     def generate_break_points(self):
         '''
         Generate break points
@@ -1029,7 +1046,7 @@ class Origami:
 
             # Initiliaze null break point
             oligo.null_break.break_point = -1
-            oligo.null_break.idx         = current_strand.idx5p + oligo.null_break.break_point
+            oligo.null_break.idx         = current_strand.idx5p + current_strand.direction*oligo.null_break.break_point
             oligo.null_break.vh          = current_strand.vh
             oligo.null_break.direction   = current_strand.direction
             oligo.null_break.distance    = 0
