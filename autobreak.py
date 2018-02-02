@@ -1362,6 +1362,9 @@ class AutoBreak:
         # Optimization function
         self.optim_args                      = [['14'], ['glength', '45', '5']]
 
+        # Maxseq parameter
+        self.optim_maxseq_length             = 14
+
         # Length gaussian parameters
         self.optim_length_mean               = 45
         self.optim_length_tolerance          = 5
@@ -1374,15 +1377,22 @@ class AutoBreak:
         self.optim_maxseq_mean               = 14
         self.optim_maxseq_tolerance          = 2
 
+        # Set optimization score functions
+        self.optim_score_functions           = ['sum', 'product']
+
         # Set function dictionary
         self.optim_funcs_dict                = {'14': self._optimize_14,
+                                                '16': self._optimize_16,
                                                 'Tm': self._optimize_Tm,
+                                                'maxseq': self._optimize_maxseq,
                                                 'glength': self._gauss_length,
                                                 'gmaxseq': self._gauss_maxseq,
                                                 'gTm': self._gauss_Tm}
         # Set optimization params
         self.optim_params_dict              = {'14': [],
+                                               '16': [],
                                                'Tm': [],
+                                               'maxseq': [self.optim_maxseq_length],
                                                'glength': [self.optim_length_mean, self.optim_length_tolerance],
                                                'gmaxseq': [self.optim_maxseq_mean, self.optim_maxseq_tolerance],
                                                'gTm': [self.optim_Tm_mean, self.optim_Tm_tolerance]}
@@ -1649,6 +1659,12 @@ class AutoBreak:
             self.total_score   += self.best_score_solutions[key].total_score
             self.total_penalty += self.best_score_solutions[key].total_penalty
 
+    def set_score_func(self, func_args):
+        '''
+        Set optimization score functions
+        '''
+        self.optim_score_functions = func_args
+
     def set_optimization_func(self, func_args):
         '''
         Set optimization function
@@ -1676,13 +1692,33 @@ class AutoBreak:
         '''
         final optimization function
         '''
-        return np.product(np.array([func(edge) for func in self.optimize_func_list]))
+        score = 0
+        # Get the score for each function type
+        score_list = np.array([func(edge) for func in self.optimize_func_list])
+
+        if 'sum' in self.optim_score_functions:
+            score += np.sum(score_list)
+        if len(score_list) > 1 and 'product' in self.optim_score_functions:
+            score += np.product(score_list)
+        return score
 
     def _optimize_14(self, edge):
         '''
         Optimization function 14
         '''
         return edge.edge_has14
+
+    def _optimize_16(self, edge):
+        '''
+        Optimization function 16
+        '''
+        return edge.edge_has16
+
+    def _optimize_maxseq(self, edge):
+        '''
+        Optimization function for N
+        '''
+        return int(edge.edge_maxseq >= self.optim_params_dict['maxseq'][0])
 
     def _optimize_Tm(self, edge):
         '''
@@ -1734,6 +1770,9 @@ class BreakEdge:
         # Length parameters
         self.edge_has14    = None
         self.edge_num14    = None
+
+        self.edge_has16    = None
+        self.edge_num16    = None
 
         # Tm parameters
         self.edge_hasTm    = None
@@ -1831,6 +1870,9 @@ class BreakEdge:
         self.edge_maxseq = max(self.length_list)
         self.edge_num14  = np.sum(self.length_list >= 14)
         self.edge_has14  = int(self.edge_num14 > 0)
+
+        self.edge_num16  = np.sum(self.length_list >= 16)
+        self.edge_has16  = int(self.edge_num16 > 0)
 
         # Tm parameters
         self.edge_numTm  = np.sum(self.Tm_list >= self.LOW_TM)
@@ -2241,6 +2283,13 @@ def parse_break_rule(break_rule):
     return break_rule.split('.')
 
 
+def parse_score_function(score_function):
+    '''m
+    Parse break rule
+    '''
+    return score_function.split('.')
+
+
 def parse_optim_function(function_input):
     '''
     Parse optimizatiotion function input
@@ -2268,6 +2317,9 @@ def main():
 
     parser.add_argument("-r",   "--rule",     type=str, default='cross.long',
                         help="Break rule")
+
+    parser.add_argument("-c",   "--score",     type=str, default='product.sum',
+                        help="Optimization score function")
 
     parser.add_argument("-f",   "--func",     type=str, default='14.glength:45:5',
                         help="Optimization function")
@@ -2298,6 +2350,7 @@ def main():
     output_directory        = args.output
     sequence_filename       = args.sequence
     break_rule              = parse_break_rule(args.rule)
+    score_func              = parse_score_function(args.score)
     optimization_func       = parse_optim_function(args.func)
     sols_per_oligo          = args.osol
     global_solutions        = args.gsol
@@ -2336,8 +2389,11 @@ def main():
     # Set solution numbers
     new_autobreak.set_solution_nums(sols_per_oligo, global_solutions)
 
-    # Set optimization function
+    # Set optimization  functions
     new_autobreak.set_optimization_func(optimization_func)
+
+    # Set score functions
+    new_autobreak.set_score_func(score_func)
 
     # Set k-shortest path selection method
     new_autobreak.set_k_select(k_selection_method)
