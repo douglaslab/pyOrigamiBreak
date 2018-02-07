@@ -374,6 +374,15 @@ class Strand:
         self.LONG_STRAND_LENGTH = 21
         self.LONG_STRAND_STEP   = 7
 
+    def get_inserts(self, idx_a, idx_b):
+        '''
+        Get inserts between two idx values on a strand
+        '''
+        idx_low, idx_high = (idx_a, idx_b) if idx_b > idx_a else (idx_b, idx_a)
+
+        # Get insertion length between two idx
+        return self.cadnano_strand.insertionLengthBetweenIdxs(idx_low, idx_high)
+
     def apply_break_rule(self):
         # Get the break rule
         self.break_rule = self.origami.break_rule
@@ -423,6 +432,12 @@ class Strand:
 
         # Combine the two arrays
         self.all_breaks = np.sort(np.unique(np.hstack((self.fwd_breaks, self.rev_breaks))))
+
+    def adjust_break_positions(self):
+        '''
+        Adjust relative break positions taking insers/skips into account
+        '''
+        self.all_breaks_adjusted = []
 
 
 class Oligo:
@@ -835,6 +850,7 @@ class Origami:
         # Get 5p strand
         strand5p              = oligo.strand5p()
         idx5p                 = strand5p.idx5Prime()
+        idx3p                 = strand5p.idx3Prime()
         vh                    = strand5p.idNum()
         direction             = -1 + 2*strand5p.isForward()
 
@@ -852,6 +868,7 @@ class Origami:
             # Create new strand
             new_strand                    = Strand()
 
+            new_strand.cadnano_strand     = strand
             new_strand.vh                 = strand.idNum()
             new_strand.idx5p              = strand.idx5Prime()
             new_strand.idx3p              = strand.idx3Prime()
@@ -862,8 +879,21 @@ class Origami:
             new_strand.direction          = -1 + 2*strand.isForward()
             new_strand.complement_strands = strand.getComplementStrands()[::new_strand.direction]
             new_strand.length             = new_strand.direction*(new_strand.idx3p-new_strand.idx5p)+1
-            new_strand.distance           = previous_strand.distance + previous_strand.length
+            new_strand.totalLength        = strand.totalLength()
+            new_strand.distance           = previous_strand.distance + previous_strand.totalLength
             new_strand.origami            = self
+
+            # Prepare the insert/skip list
+            new_strand.inserts            = []
+            for idx in range(idx5p, idx3p + direction, direction):
+                # Initialize insert size
+                insert_size = 0
+                if strand.hasInsertionAt(idx):
+                    insert_size = strand.insertionLengthBetweenIdxs(idx, idx)
+                new_strand.inserts.append(insert_size)
+
+            # Make a numpy array
+            new_strand.inserts = np.array(new_strand.inserts)
 
             # Make the strand connection
             previous_strand.next_strand = new_strand
@@ -973,8 +1003,11 @@ class Origami:
                     new_sequence.forward = current_strand.forward
 
                     # Assign string indexes
-                    new_sequence.strLow  = current_strand.direction*(new_sequence.idx5p - current_strand.idx5p)
-                    new_sequence.strHigh = current_strand.direction*(new_sequence.idx3p - current_strand.idx5p)
+                    new_sequence.strLow  = current_strand.direction*(new_sequence.idx5p - current_strand.idx5p) + current_strand.get_inserts(new_sequence.idx5p, current_strand.idx5p)
+                    new_sequence.strHigh = current_strand.direction*(new_sequence.idx3p - current_strand.idx5p) + current_strand.get_inserts(new_sequence.idx3p, current_strand.idx5p)
+
+                    # Get the total length for the sequence
+                    new_sequence.totalLength = new_sequence.strHigh - new_sequence.strLow + 1
 
                     # Assign sequence distance from 5' end of oligo
                     new_sequence.distance = new_sequence.strLow + current_strand.distance
@@ -1284,7 +1317,6 @@ class Origami:
         else:
             # Assign random sequence
             for scaffold in self.scaffolds:
-
                 self.scaffold_sequence = utilities.generate_nC(scaffold.length())
                 scaffold.applySequence(self.scaffold_sequence)
 
