@@ -433,11 +433,24 @@ class Strand:
         # Combine the two arrays
         self.all_breaks = np.sort(np.unique(np.hstack((self.fwd_breaks, self.rev_breaks))))
 
+        # Adjust break positions for the inserts and skips
+        self.adjust_break_positions()
+
     def adjust_break_positions(self):
         '''
         Adjust relative break positions taking insers/skips into account
         '''
         self.all_breaks_adjusted = []
+
+        for current_break in self.all_breaks:
+            # Get idx for break
+            break_idx3p = self.idx5p + self.direction*current_break
+
+            # Get number of inserts/skips between 5p and the break position
+            num_inserts = self.get_inserts(self.idx5p, break_idx3p)
+
+            # Add adjusted break to list
+            self.all_breaks_adjusted.append(current_break+num_inserts)
 
 
 class Oligo:
@@ -835,9 +848,10 @@ class Origami:
         generator    = oligo.strand5p().generator3pStrand()
 
         # Create a null strand object for oligo
-        previous_strand          = Strand()
-        previous_strand.length   = 0
-        previous_strand.distance = 0
+        previous_strand             = Strand()
+        previous_strand.length      = 0
+        previous_strand.totalLength = 0
+        previous_strand.distance    = 0
 
         # Create Oligo object
         new_oligo             = Oligo()
@@ -1003,8 +1017,10 @@ class Origami:
                     new_sequence.forward = current_strand.forward
 
                     # Assign string indexes
-                    new_sequence.strLow  = current_strand.direction*(new_sequence.idx5p - current_strand.idx5p) + current_strand.get_inserts(new_sequence.idx5p, current_strand.idx5p)
-                    new_sequence.strHigh = current_strand.direction*(new_sequence.idx3p - current_strand.idx5p) + current_strand.get_inserts(new_sequence.idx3p, current_strand.idx5p)
+                    new_sequence.strLow  = (current_strand.direction*(new_sequence.idx5p - current_strand.idx5p) +
+                                            current_strand.get_inserts(new_sequence.idx5p, current_strand.idx5p))
+                    new_sequence.strHigh = (current_strand.direction*(new_sequence.idx3p - current_strand.idx5p) +
+                                            current_strand.get_inserts(new_sequence.idx3p, current_strand.idx5p))
 
                     # Get the total length for the sequence
                     new_sequence.totalLength = new_sequence.strHigh - new_sequence.strLow + 1
@@ -1078,17 +1094,20 @@ class Origami:
             oligo.null_break = previous_break
 
             # Initiliaze null break point
-            oligo.null_break.break_point = -1
-            oligo.null_break.idx         = current_strand.idx5p + current_strand.direction*oligo.null_break.break_point
-            oligo.null_break.vh          = current_strand.vh
-            oligo.null_break.direction   = current_strand.direction
-            oligo.null_break.distance    = 0
-            oligo.null_break.strand      = current_strand
-            oligo.null_break.key         = (oligo.null_break.vh, oligo.null_break.idx, oligo.null_break.direction)
-            oligo.null_break.sequence    = current_strand.sequences[0]
-            oligo.null_break.oligo       = oligo
-            oligo.null_break.order_id    = order_id_counter
-            oligo.null_break.origami     = self
+            oligo.null_break.break_point          = -1
+            oligo.null_break.break_point_adjusted = -1
+            oligo.null_break.idx                  = (current_strand.idx5p +
+                                                     current_strand.direction*oligo.null_break.break_point)
+            oligo.null_break.vh                   = current_strand.vh
+            oligo.null_break.direction            = current_strand.direction
+            oligo.null_break.distance             = 0
+            oligo.null_break.strand               = current_strand
+            oligo.null_break.key                  = (oligo.null_break.vh, oligo.null_break.idx,
+                                                     oligo.null_break.direction)
+            oligo.null_break.sequence             = current_strand.sequences[0]
+            oligo.null_break.oligo                = oligo
+            oligo.null_break.order_id             = order_id_counter
+            oligo.null_break.origami              = self
 
             # Add null oligo to break list
             oligo.breaks.append(oligo.null_break)
@@ -1101,7 +1120,13 @@ class Origami:
             while current_strand:
 
                 # Iterate through all positions
-                for break_position in current_strand.all_breaks:
+                for i in range(len(current_strand.all_breaks)):
+                    # Get break position
+                    break_position = current_strand.all_breaks[i]
+
+                    # Get adjusted break position
+                    break_position_adjusted = current_strand.all_breaks_adjusted[i]
+
                     # Update break id counter
                     order_id_counter += 1
 
@@ -1112,14 +1137,15 @@ class Origami:
                     new_break   = BreakNode()
 
                     # Break position
-                    new_break.break_point = break_position
-                    new_break.idx         = current_strand.idx5p + current_strand.direction*break_position
-                    new_break.vh          = current_strand.vh
-                    new_break.direction   = current_strand.direction
-                    new_break.distance    = current_strand.distance + break_position + 1
-                    new_break.key         = (new_break.vh, new_break.idx, new_break.direction)
-                    new_break.order_id    = order_id_counter
-                    new_break.origami     = self
+                    new_break.break_point          = break_position
+                    new_break.break_point_adjusted = break_position_adjusted
+                    new_break.idx                  = current_strand.idx5p + current_strand.direction*break_position
+                    new_break.vh                   = current_strand.vh
+                    new_break.direction            = current_strand.direction
+                    new_break.distance             = current_strand.distance + break_position_adjusted + 1
+                    new_break.key                  = (new_break.vh, new_break.idx, new_break.direction)
+                    new_break.order_id             = order_id_counter
+                    new_break.origami              = self
 
                     # Assign sequence to break object
                     new_break.sequence    = current_strand.sequences[sequence_id]
@@ -1863,14 +1889,14 @@ class BreakEdge:
 
         # Iterate over sequence list
         if len(self.sequence_list) == 1:
-            start_point  = self.current_break.break_point+1
-            final_point  = self.next_break.break_point+1
+            start_point  = self.current_break.break_point_adjusted+1
+            final_point  = self.next_break.break_point_adjusted+1
             dna_sequence = self.current_break.strand.dna[start_point:final_point]
 
             self.dna_list.append(dna_sequence)
         else:
             # 1. Get the 5' sequence
-            start_point  = self.current_break.break_point+1
+            start_point  = self.current_break.break_point_adjusted+1
             final_point  = self.current_break.sequence.strHigh+1
             dna_sequence = self.current_break.strand.dna[start_point:final_point]
 
@@ -1881,7 +1907,7 @@ class BreakEdge:
 
             # 3. Get the 3' sequence
             start_point  = self.next_break.sequence.strLow
-            final_point  = self.next_break.break_point+1
+            final_point  = self.next_break.break_point_adjusted+1
             dna_sequence = self.next_break.strand.dna[start_point:final_point]
 
             self.dna_list.append(dna_sequence)
