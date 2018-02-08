@@ -1382,7 +1382,6 @@ class AutoBreak:
         # Cadnano parameters
         self.origami                         = None
         self.json_input                      = None
-        self.json_output                     = None
 
         # Constraints
         self.MAX_OLIGO_LENGTH                = 60
@@ -1414,7 +1413,8 @@ class AutoBreak:
         self.optim_pick_method               = 'random'
 
         # Output file
-        self.json_output                     = 'out.json'
+        self.json_legacy_output             = 'out_legacy.json'
+        self.json_cn25_output               = 'out_cn25.json'
         self.output_directory                = '.'
 
         # Optimization function
@@ -1490,20 +1490,28 @@ class AutoBreak:
         head, tail       = os.path.split(self.origami.json_input)
         root, ext        = os.path.splitext(tail)
 
-        # Output file
-        self.json_output = self.output_directory+'/'+root+'_autobreak.json'
+        # Output files
+        self.json_legacy_output = self.output_directory+'/'+root+'_autobreak_legacy.json'
+        self.json_cn25_output   = self.output_directory+'/'+root+'_autobreak_cn25.json'
 
     def write_part_to_json(self):
         '''
         Write cadnano part to json
         '''
-        self.origami.doc.writeToFile(self.json_output, legacy=True)
+        self.origami.doc.writeToFile(self.json_legacy_output, legacy=True)
+        self.origami.doc.writeToFile(self.json_cn25_output, legacy=False)
 
     def set_pick_method(self, pick_method='random'):
         '''
         Set solution picking method
         '''
         self.optim_pick_method = pick_method
+
+    def set_maximum_breaks(self, maximum_num_breaks=70):
+        '''
+        Set maximum number of breaks parameter
+        '''
+        self.max_num_breaks = maximum_num_breaks
 
     def set_oligo_shuffle_parameter(self, oligo_shuffle_parameter=False):
         '''
@@ -2363,45 +2371,54 @@ def parse_optim_function(function_input):
 
 def main():
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("-i",   "--input",    type=str,
                         help="Cadnano json file")
-
-    parser.add_argument("-u",   "--output",   type=str, default='.',
-                        help="Output directory")
-
-    parser.add_argument("-s",   "--sequence", type=str, default=None,
-                        help="Sequence file in txt")
 
     parser.add_argument("-r",   "--rule",     type=str, default='cross.long',
                         help="Break rule")
 
-    parser.add_argument("-c",   "--score",     type=str, default='product.sum',
+    parser.add_argument("-s",   "--score",     type=str, default='product.sum',
                         help="Optimization score function")
 
     parser.add_argument("-f",   "--func",     type=str, default='14.glength:45:5',
                         help="Optimization function")
 
-    parser.add_argument("-o",   "--osol",     type=int, default=100,
+    parser.add_argument("-out",   "--output",   type=str, default='.',
+                        help="Output directory")
+
+    parser.add_argument("-seq",   "--sequence", type=str, default=None,
+                        help="Sequence file in txt")
+
+    parser.add_argument("-osol",   "--osol",     type=int, default=100,
                         help="Solutions per oligo")
 
-    parser.add_argument("-g",   "--gsol",     type=int,
+    parser.add_argument("-gsol",   "--gsol",     type=int,
                         help="Global solutions", default=5)
 
-    parser.add_argument("-k",   "--kselect",  type=str,
+    parser.add_argument("-ks",   "--kselect",  type=str,
                         help="Selection method for k-shortest path",
                         choices=['best', 'random'], default='best')
 
-    parser.add_argument("-p",   "--pmethod",  type=str, default='random', choices=['best', 'random'],
+    parser.add_argument("-pm",   "--pmethod",  type=str, default='random', choices=['best', 'random'],
                         help="Method for stepwise break solution picking")
 
-    parser.add_argument("-l",   "--shuffle",  action='store_true',
+    parser.add_argument("-shuffle",   "--shuffle",  action='store_true',
                         help="Shuffle oligos during stepwise solution determination")
 
-    parser.add_argument("-d",   "--dontbreaklong",  action='store_true',
+    parser.add_argument("-dontb",   "--dontbreaklong",  action='store_true',
                         help="Dont break very long oligos that have more X number of breaks")
 
+    parser.add_argument("-maxb",   "--maxbreak",   type=int, default=70,
+                        help="Maximum number of breaks allowed for an oligo.\
+                        This parameter is in effect if dontbreaklong is not set.")
+
     args = parser.parse_args()
+
+    # Check if the required arguments are passed to the code
+    if args.input is None:
+        parser.print_help()
+        sys.exit('Input file does not exist!')
 
     # Assign the parameters
     input_filename          = args.input
@@ -2416,6 +2433,7 @@ def main():
     pick_method             = args.pmethod
     shuffle_oligos               = args.shuffle
     dont_break_very_long_staples = args.dontbreaklong
+    max_num_breaks               = args.maxbreak
 
     # Check if input file exists
     if not os.path.isfile(input_filename):
@@ -2452,6 +2470,9 @@ def main():
 
     # Set score functions
     new_autobreak.set_score_func(score_func)
+
+    # Set maximum number of breaks
+    new_autobreak.set_maximum_breaks(max_num_breaks)
 
     # Set k-shortest path selection method
     new_autobreak.set_k_select(k_selection_method)
