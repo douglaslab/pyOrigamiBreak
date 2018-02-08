@@ -13,7 +13,9 @@ import sys
 import argparse
 import utilities
 import math
+import time
 
+from tqdm import tqdm
 from cadnano.document import Document
 
 
@@ -24,7 +26,6 @@ class Sequence:
         '''
         self.dna           = None
         self.next_sequence = None
-
 
 class OligoBreakSolution:
     def __init__(self):
@@ -53,10 +54,10 @@ class OligoBreakSolution:
         Print break solution
         '''
         if self.breaks:
-            print('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" %
-                  (current_break.key) for current_break in self.breaks]))
-            print('Edge length/weight: '+'->'.join(['(%d / %.1f)' %
-                  (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]))
+            tqdm.write('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" %
+                       (current_break.key) for current_break in self.breaks]))
+            tqdm.write('Edge length/weight: '+'->'.join(['(%d / %.1f)' %
+                       (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]))
 
     def reset_temp_neighbor_constraints(self):
         '''
@@ -161,7 +162,10 @@ class GroupBreaksolution:
                   (self.complete, self.total_score, self.total_penalty))
             # Print the solutions
             for oligo_key in self.break_solutions:
-                self.break_solutions[oligo_key].print_solution()
+                # Print solution for oligo
+                tqdm.write('Solution for oligo: (%d,%d,%d)' % oligo_key)
+                if self.break_solutions[oligo_key]:
+                    self.break_solutions[oligo_key].print_solution()
 
     def calculate_penalty(self):
         '''
@@ -277,7 +281,7 @@ class OligoGroup:
             self.group_solutions.append(new_group_solution)
 
     def create_stepwise_oligo_solutions(self, num_oligo_solutions=100, num_global_solutions=500,
-                                        pick_method='random', shuffle_oligos=True):
+                                        pick_method='random', shuffle_oligos=True, verbose=False):
         '''
         Create stepwise oligo solutions
         '''
@@ -299,7 +303,9 @@ class OligoGroup:
             if shuffle_oligos:
                 self.shuffle_oligos()
 
-            for oligo in self.oligos:
+            # Iterate over every oligo
+            for oligo in tqdm(self.oligos, desc='Group loop', leave=False, dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+
                 # If oligo has dont break flag, skip
                 if oligo.dont_break:
                     continue
@@ -320,11 +326,15 @@ class OligoGroup:
                 if chosen_solution:
                     chosen_solution.apply_temp_neighbor_constraints()
 
+                # Add sleep
+                time.sleep(0.1)
+
             # Calculate the penalties for each group solution
             new_group_solution.calculate_penalty()
 
             # Print new group solution
-            new_group_solution.print_solution()
+            if verbose:
+                new_group_solution.print_solution()
 
             # Add solution to list
             self.group_solutions.append(new_group_solution)
@@ -620,8 +630,8 @@ class Oligo:
         # Get k-select parameter
         k_select = self.origami.autobreak.k_select
 
-        # Show oligo being processed
-        print('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)))
+        # Show oligo being processed - use tdqm
+        tqdm.write('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)))
 
         if self.dont_break:
             self.break_solutions = []
@@ -1455,6 +1465,9 @@ class AutoBreak:
                                                'gmaxseq': [self.optim_maxseq_mean, self.optim_maxseq_tolerance],
                                                'gTm': [self.optim_Tm_mean, self.optim_Tm_tolerance]}
 
+        # Verbose output
+        self.verbose_output                 = False
+
     def preprocess_optim_params(self):
         '''
         Preprocess optimization parameters
@@ -1539,11 +1552,16 @@ class AutoBreak:
         self.break_rule         = [rule for rule in new_break_rule]
         self.origami.break_rule = self.break_rule
 
+    def set_verbose_output(self, verbose=False):
+        '''
+        Set verbose output
+        '''
+        self.verbose_output = verbose
+
     def run_autobreak(self):
         '''
         Run basic autobreak protocol
         '''
-
         # Define json output
         self.define_json_output()
 
@@ -1584,8 +1602,8 @@ class AutoBreak:
         '''
         Main function for solution determination
         '''
+        for oligo_group in tqdm(self.origami.oligo_groups, desc='Main loop ', dynamic_ncols=True, bar_format='{l_bar}{bar}'):
 
-        for oligo_group in self.origami.oligo_groups:
             # Sort oligos by length
             oligo_group.sort_oligos_by_length()
 
@@ -1595,6 +1613,9 @@ class AutoBreak:
 
             # Remove incomplete solutions
             oligo_group.remove_incomplete_solutions()
+
+            # Add sleep
+            time.sleep(0.1)
 
     def initialize(self):
         '''
@@ -1707,7 +1728,7 @@ class AutoBreak:
 
         # Print total score and crossover penalty for the best solution
 
-        print('BestSolution: TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' % (self.total_score, self.total_penalty))
+        tqdm.write('BestSolution: TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' % (self.total_score, self.total_penalty))
 
         for key in self.best_score_solutions:
 
@@ -2368,7 +2389,6 @@ def parse_optim_function(function_input):
 
     return functions
 
-
 def main():
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -2409,7 +2429,13 @@ def main():
     parser.add_argument("-dontb",   "--dontbreaklong",  action='store_true',
                         help="Dont break very long oligos that have more X number of breaks")
 
-    parser.add_argument("-maxb",   "--maxbreak",   type=int, default=70,
+    parser.add_argument("-v",   "--verbose",  action='store_true',
+                        help="Verbose output")
+
+    parser.add_argument("-seed",   "--seed",  type=int, default = 0,
+                        help="Random seed")
+
+    parser.add_argument("-maxb",   "--maxbreak",   type=int, default=60,
                         help="Maximum number of breaks allowed for an oligo.\
                         This parameter is in effect if dontbreaklong is not set.")
 
@@ -2434,6 +2460,8 @@ def main():
     shuffle_oligos               = args.shuffle
     dont_break_very_long_staples = args.dontbreaklong
     max_num_breaks               = args.maxbreak
+    verbose_output               = args.verbose
+    random_seed                  = args.seed
 
     # Check if input file exists
     if not os.path.isfile(input_filename):
@@ -2444,7 +2472,7 @@ def main():
         sys.exit('Output directory does not exist!')
 
     # Set random seed in order to get the same results with the same set of parameters
-    random.seed(0)
+    random.seed(random_seed)
 
     # Create Origami object
     new_origami = Origami()
@@ -2485,6 +2513,9 @@ def main():
 
     # Preprocess optimization parameters
     new_autobreak.preprocess_optim_params()
+
+    # Set verbose parameter
+    new_autobreak.set_verbose_output(verbose_output)
 
     # Initialize origami object
     new_origami.initialize(input_filename)
