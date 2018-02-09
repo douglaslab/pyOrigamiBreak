@@ -179,9 +179,10 @@ class GroupBreaksolution:
         for key in self.break_solutions:
             # Get break solution
             break_solution    = self.break_solutions[key]
-
+            
             # If the solution doesnt exist move to next break solution
             if not break_solution:
+                print(key, break_solution)
                 self.complete = False
                 continue
 
@@ -327,7 +328,7 @@ class OligoGroup:
                     chosen_solution.apply_temp_neighbor_constraints()
 
                 # Add sleep
-                time.sleep(0.1)
+                time.sleep(0.01)
 
             # Calculate the penalties for each group solution
             new_group_solution.calculate_penalty()
@@ -662,7 +663,6 @@ class Oligo:
                 # Generate the shortest k-paths
                 shortest_k_paths = current_break.get_k_shortest_paths(current_break, self.num_solutions_per_oligo,
                                                                       k_select)
-
                 # Add solutions to solutions list
                 self.break_solutions += shortest_k_paths
 
@@ -1615,7 +1615,7 @@ class AutoBreak:
             oligo_group.remove_incomplete_solutions()
 
             # Add sleep
-            time.sleep(0.1)
+            time.sleep(0.01)
 
     def initialize(self):
         '''
@@ -2189,13 +2189,12 @@ class BreakNode:
 
         return self.k_shortest_paths
 
-    def get_shortest_paths(self, final_break, num_solutions=10):
+    def get_shortest_paths(self, final_break, num_solutions=1):
         '''
         Find the shortest path between current and final break points
         '''
         # Initialize the set and stack
         stack = [self]
-
         while stack:
             # Pop the break node
             new_break = stack.pop(0)
@@ -2212,7 +2211,6 @@ class BreakNode:
 
             # Update the scores for connected breaks
             for break_edge in valid_break_edges:
-
                 # If id difference is in wrong direction and if it is a loop, discard the edge
                 if not new_break.is_break_edge_possible(break_edge.next_break):
                     continue
