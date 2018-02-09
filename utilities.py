@@ -8,6 +8,9 @@
 import numpy as np
 import contextlib
 
+# CONSTANTS
+INFINITY = 1E6
+
 # Sequence enthalpy/entropy values at 37C-1M NaCl from SANTALUCIA-HICKS paper
 # https://doi.org/10.1146/annurev.biophys.32.110601.141800 - DOI:10.1146/annurev.biophys.32.110601.141800
 

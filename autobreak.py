@@ -27,6 +27,7 @@ class Sequence:
         self.dna           = None
         self.next_sequence = None
 
+
 class OligoBreakSolution:
     def __init__(self):
         self.breaks = None
@@ -179,7 +180,7 @@ class GroupBreaksolution:
         for key in self.break_solutions:
             # Get break solution
             break_solution    = self.break_solutions[key]
-            
+
             # If the solution doesnt exist move to next break solution
             if not break_solution:
                 print(key, break_solution)
@@ -291,7 +292,8 @@ class OligoGroup:
         self.group_solutions = []
 
         # Number of solutions
-        for i in range(num_global_solutions):
+        for i in tqdm(range(num_global_solutions), desc='Global loop', leave=False,
+                            dynamic_ncols=True, bar_format='{l_bar}{bar}'):
 
             # Reset temporary neighbor constraints
             self.reset_temp_neighbor_constraints()
@@ -305,7 +307,8 @@ class OligoGroup:
                 self.shuffle_oligos()
 
             # Iterate over every oligo
-            for oligo in tqdm(self.oligos, desc='Group loop', leave=False, dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+            for oligo in tqdm(self.oligos, desc='Oligo loop', leave=False,
+                              dynamic_ncols=True, bar_format='{l_bar}{bar}'):
 
                 # If oligo has dont break flag, skip
                 if oligo.dont_break:
@@ -326,9 +329,6 @@ class OligoGroup:
                 # 5. Apply temporary neighbor constraints
                 if chosen_solution:
                     chosen_solution.apply_temp_neighbor_constraints()
-
-                # Add sleep
-                time.sleep(0.01)
 
             # Calculate the penalties for each group solution
             new_group_solution.calculate_penalty()
@@ -650,7 +650,9 @@ class Oligo:
 
         if self.circular:
 
-            for current_break in self.breaks:
+            for current_break in tqdm(self.breaks, desc='Shortest path loop ',
+                                      dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+
                 # Check the constraints. If not allowed to break, skip
                 if current_break.dont_break or current_break.dont_break_temp:
                     continue
@@ -1402,9 +1404,6 @@ class AutoBreak:
         self.NUM_OLIGO_SOLUTIONS             = 1000
         self.NUM_GLOBAL_SOLUTIONS            = 1000
 
-        # CONSTANTS
-        self.INFINITY                        = 1E6
-
         # Score parameters
         self.total_score                     = 0
         self.total_penalty                   = 0
@@ -1602,7 +1601,8 @@ class AutoBreak:
         '''
         Main function for solution determination
         '''
-        for oligo_group in tqdm(self.origami.oligo_groups, desc='Main loop ', dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+        for oligo_group in tqdm(self.origami.oligo_groups, desc='Main loop ',
+                                dynamic_ncols=True, bar_format='{l_bar}{bar}'):
 
             # Sort oligos by length
             oligo_group.sort_oligos_by_length()
@@ -1613,9 +1613,6 @@ class AutoBreak:
 
             # Remove incomplete solutions
             oligo_group.remove_incomplete_solutions()
-
-            # Add sleep
-            time.sleep(0.01)
 
     def initialize(self):
         '''
@@ -1728,7 +1725,8 @@ class AutoBreak:
 
         # Print total score and crossover penalty for the best solution
 
-        tqdm.write('BestSolution: TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' % (self.total_score, self.total_penalty))
+        tqdm.write('BestSolution: TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
+                   (self.total_score, self.total_penalty))
 
         for key in self.best_score_solutions:
 
@@ -2013,6 +2011,7 @@ class BreakNode:
 
         # Graph parameter
         self.score               = 0
+        self.best_path_node      = None
         self.best_path_nodes     = None
         self.shortest_paths      = None
         self.k_potential_paths   = None
@@ -2025,6 +2024,7 @@ class BreakNode:
         self.order_id         = -1
         self.traverse_path    = []
         self.best_path_nodes  = []
+        self.best_path_node   = None
         self.score            = 0
         self.visited          = False
         self.shortest_paths   = []
@@ -2085,19 +2085,19 @@ class BreakNode:
         self.k_shortest_paths = []
 
         # 1. Get the shortest paths
-        shortest_paths = self.get_shortest_paths(final_break, num_solutions=1)
+        shortest_path = self.get_shortest_path(final_break)
 
         # If the here is no path found return empty list
-        if len(shortest_paths) == 0:
+        if shortest_path is None:
             return self.k_shortest_paths
 
         # 2.Add best path to k-path list
-        self.k_shortest_paths  = [shortest_paths[0]]
+        self.k_shortest_paths  = [shortest_path]
         self.k_potential_paths = []
         num_k_solutions        = 1
 
         # Check the final score of the path
-        if shortest_paths[0].score == 0:
+        if shortest_path.score == 0:
             return self.k_shortest_paths
 
         # 3. Make the paths
@@ -2119,40 +2119,23 @@ class BreakNode:
                         # Make the edge inactive
                         last_solution.edges[i].active = False
 
-                # Get last break
-                last_break = last_solution.breaks[i]
-
                 # Reset break paths and find solution
                 self.oligo.reset_break_paths()
-                self.oligo.reset_break_order_ids(last_break, final_break)
+                self.oligo.reset_break_order_ids(self, final_break)
 
                 # Get sub solution
-                sub_solution = last_solution.breaks[i].get_shortest_paths(final_break, num_solutions=1)
+                potential_solution = self.get_shortest_path(final_break)
 
                 # Make the edges active again
                 for edge in inactive_edges:
                     edge.active = True
 
                 # If there is no solution continue
-                if len(sub_solution) == 0:
+                if potential_solution is None:
                     continue
 
-                sub_solution[0].initialize()
-
-                # Get final score from last solution
-                pre_score = last_solution.scores[:i][-1] if len(last_solution.scores[:i]) > 0 else 0
-
-                # Update subsolution scores
-                sub_solution[0].scores = [score+pre_score for score in sub_solution[0].scores]
-
-                # Create new solution
-                new_solution = OligoBreakSolution()
-                new_solution.start_break  = self
-                new_solution.final_break  = final_break
-                new_solution.edges        = last_solution.edges[:i]  + sub_solution[0].edges
-                new_solution.breaks       = last_solution.breaks[:i] + sub_solution[0].breaks
-                new_solution.scores       = last_solution.scores[:i] + sub_solution[0].scores
-                new_solution.score        = new_solution.scores[-1]
+                # Get the first solution in the list
+                new_solution = potential_solution
 
                 # Add potential solution if it doesnt exist in k-shortest paths
                 potential_solution_exists = False
@@ -2189,7 +2172,7 @@ class BreakNode:
 
         return self.k_shortest_paths
 
-    def get_shortest_paths(self, final_break, num_solutions=1):
+    def get_shortest_path(self, final_break):
         '''
         Find the shortest path between current and final break points
         '''
@@ -2218,16 +2201,18 @@ class BreakNode:
                 # Determine the new score
                 new_score = new_break.score + break_edge.edge_weight
 
+                # Update the score based on the existence of a neighbor crossover
+                if new_break.neighbor_break in new_break.best_path_nodes:
+                    new_score -= utilities.INFINITY
+
                 # Make new break Path object
                 new_break_path = BreakPath(new_break, break_edge, new_score)
 
                 # If new score is higher than the previous one, make a new list
                 if new_score > break_edge.next_break.score:
-                    break_edge.next_break.best_path_nodes = [new_break_path]
+                    break_edge.next_break.best_path_node  = new_break_path
+                    break_edge.next_break.best_path_nodes = new_break.best_path_nodes + [new_break] 
                     break_edge.next_break.score           = new_score
-                # Otherwise add to existng path list
-                elif new_score == break_edge.next_break.score:
-                    break_edge.next_break.best_path_nodes.append(new_break_path)
 
                 # Add next break to connected breaks list
                 if not break_edge.next_break.visited:
@@ -2239,23 +2224,22 @@ class BreakNode:
             loop_break_path = BreakPath(self, self.loop_edge, self.loop_edge.edge_weight)
 
             if self.loop_edge.edge_weight > final_break.score:
-                final_break.best_path_nodes = [loop_break_path]
-                final_break.score           =  self.loop_edge.edge_weight
-            elif self.loop_edge.edge_weight == final_break.score:
-                final_break.best_path_nodes.append(loop_break_path)
+                final_break.best_path_node = loop_break_path
+                final_break.score          =  self.loop_edge.edge_weight
 
-        # Return best paths
-        final_break.shortest_paths = final_break.traverse_best_paths(self, num_solutions)
+        # Return best path
+        final_break.shortest_path = final_break.traverse_best_path(self)
 
-        return final_break.shortest_paths
+        return final_break.shortest_path
 
-    def traverse_best_paths(self, start_break, num_solutions=1):
+    def traverse_best_path(self, start_break):
 
         # Initialize shortest path
-        self.shortest_paths = []
+        self.shortest_path = None
 
-        # Previous break on path
-        stack = self.best_path_nodes
+        # Check if the final break has a path node
+        if self.best_path_node is None:
+            return self.shortest_path
 
         # Make the traverse path for starting node empty
         self.traverse_path = []
@@ -2263,21 +2247,16 @@ class BreakNode:
         # Make final node break path object
         final_break_path = BreakPath(self, None, self.score)
 
-        # Initalize the traverse path for the initial nodes
-        for break_node_path in stack:
-            break_node_path.break_node.traverse_path = self.traverse_path + [final_break_path]
+        # Initalize the traverse path for the initial node
+        self.best_path_node.break_node.traverse_path = self.traverse_path + [final_break_path]
 
-        while stack:
+        # Assign new break path
+        new_break_path = self.best_path_node
+        
+        # Assign new break
+        new_break = new_break_path.break_node
 
-            # Check number of shortest paths
-            if len(self.shortest_paths) == num_solutions:
-                break
-
-            # Pop the break path
-            new_break_path = stack.pop()
-
-            # Get break node
-            new_break = new_break_path.break_node
+        while new_break:
 
             if new_break == start_break:
                 new_break_solution              = OligoBreakSolution()
@@ -2289,20 +2268,22 @@ class BreakNode:
                 # Initialize the solution
                 new_break_solution.initialize()
 
-                self.shortest_paths.append(new_break_solution)
-                continue
+                self.shortest_path = new_break_solution
+                break
 
             # Get the new path nodes
-            new_path_nodes = new_break.best_path_nodes
+            new_path_node = new_break.best_path_node
 
             # Iterate through each node
-            for new_path_node in new_path_nodes:
-                new_path_node.break_node.traverse_path = new_break.traverse_path + [new_break_path]
+            new_path_node.break_node.traverse_path = new_break.traverse_path + [new_break_path]
 
-            # Extend the group with new breaks
-            stack.extend(new_path_nodes)
+            # Update new break path
+            new_break_path = new_path_node
 
-        return self.shortest_paths
+            # Update new break
+            new_break = new_path_node.break_node
+
+        return self.shortest_path
 
     def get_connected_breaks(self):
         '''
@@ -2387,6 +2368,7 @@ def parse_optim_function(function_input):
 
     return functions
 
+
 def main():
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -2430,7 +2412,7 @@ def main():
     parser.add_argument("-v",   "--verbose",  action='store_true',
                         help="Verbose output")
 
-    parser.add_argument("-seed",   "--seed",  type=int, default = 0,
+    parser.add_argument("-seed",   "--seed",  type=int, default=0,
                         help="Random seed")
 
     parser.add_argument("-maxb",   "--maxbreak",   type=int, default=60,
