@@ -623,7 +623,7 @@ class Oligo:
             # Update current breaks
             current_break = current_break.next_break
 
-    def generate_shortest_paths(self, num_solutions=100):
+    def generate_shortest_paths(self, num_solutions=1):
         '''
         Get the shortest paths for the oligo if only it allowed to break it
         '''
@@ -649,7 +649,6 @@ class Oligo:
             self.num_solutions_per_oligo = num_solutions
 
         if self.circular:
-
             for current_break in tqdm(self.breaks, desc='Shortest path loop ',
                                       dynamic_ncols=True, bar_format='{l_bar}{bar}'):
 
@@ -669,7 +668,6 @@ class Oligo:
                 self.break_solutions += shortest_k_paths
 
         else:
-
             # Reset break path variables
             self.reset_break_paths()
             # Reset break id numbers
@@ -681,10 +679,6 @@ class Oligo:
 
             # Add solutions to solutions list
             self.break_solutions += shortest_k_paths
-
-        # If number of solutions is 1 then remove the worse results
-        if num_solutions == 1:
-            self.keep_best_break_solutions()
 
         # Calculate self penalty scores for the solutions
         for break_solution in self.break_solutions:
@@ -1476,16 +1470,26 @@ class AutoBreak:
                make oligo solution and global solution number 1
                since Optimization yields the best result
 
-        RULE2. If oligo solution number is 1,
+        RULE2. If oligo solution number is 1, break rule has cross
+               and pick method is best, then
                There is no need for making global solution number higher than 1
+
+        RULE3. If oligo solution number is 1, pick method is the best
         '''
 
+        # RULE 1
         if 'cross' not in self.break_rule:
             self.NUM_OLIGO_SOLUTIONS  = 1
             self.NUM_GLOBAL_SOLUTIONS = 1
 
-        if self.NUM_OLIGO_SOLUTIONS == 1:
+        # RULE 2
+        if 'cross' in self.break_rule and not self.optim_shuffle_oligos and self.NUM_OLIGO_SOLUTIONS == 1:
             self.NUM_GLOBAL_SOLUTIONS = 1
+
+        # RULE 3
+        if self.NUM_OLIGO_SOLUTIONS == 1:
+            self.optim_pick_method = 'best'
+
 
     def set_output_directory(self, output_directory):
         '''
@@ -2199,9 +2203,6 @@ class BreakNode:
             if final_break.visited and new_break == final_break:
                 break
 
-            # Add break to visited list
-            new_break.visited = True
-
             # Get valid break edges
             valid_break_edges = new_break.get_valid_edges()
 
@@ -2216,7 +2217,7 @@ class BreakNode:
 
                 # Update the score based on the existence of a neighbor crossover
                 if new_break.neighbor_break in new_break.best_path_nodes:
-                    new_score -= utilities.INFINITY
+                    new_score += -utilities.INFINITY
 
                 # Make new break Path object
                 new_break_path = BreakPath(new_break, break_edge, new_score)
@@ -2230,6 +2231,9 @@ class BreakNode:
                 # Add next break to connected breaks list
                 if not break_edge.next_break.visited:
                     stack.append(break_edge.next_break)
+
+                # Make the next break visited
+                break_edge.next_break.visited = True
 
         # Finally compare with the loop connection
         if self == final_break and self.loop_edge and self.loop_edge.is_valid():
@@ -2286,6 +2290,10 @@ class BreakNode:
 
             # Get the new path nodes
             new_path_node = new_break.best_path_node
+
+            # Check if there is a path from new break in reverse direction
+            if new_path_node is None:
+                break
 
             # Iterate through each node
             new_path_node.break_node.traverse_path = new_break.traverse_path + [new_break_path]
@@ -2403,17 +2411,17 @@ def main():
     parser.add_argument("-seq",   "--sequence", type=str, default=None,
                         help="Sequence file in txt")
 
-    parser.add_argument("-osol",   "--osol",     type=int, default=100,
+    parser.add_argument("-osol",   "--osol",     type=int, default=1,
                         help="Solutions per oligo")
 
     parser.add_argument("-gsol",   "--gsol",     type=int,
-                        help="Global solutions", default=5)
+                        help="Global solutions", default=10)
 
     parser.add_argument("-ks",   "--kselect",  type=str,
                         help="Selection method for k-shortest path",
                         choices=['best', 'random'], default='best')
 
-    parser.add_argument("-pm",   "--pmethod",  type=str, default='random', choices=['best', 'random'],
+    parser.add_argument("-pm",   "--pmethod",  type=str, default='best', choices=['best', 'random'],
                         help="Method for stepwise break solution picking")
 
     parser.add_argument("-shuffle",   "--shuffle",  action='store_true',
@@ -2428,7 +2436,7 @@ def main():
     parser.add_argument("-seed",   "--seed",  type=int, default=0,
                         help="Random seed")
 
-    parser.add_argument("-maxb",   "--maxbreak",   type=int, default=60,
+    parser.add_argument("-maxb",   "--maxbreak",   type=int, default=10000,
                         help="Maximum number of breaks allowed for an oligo.\
                         This parameter is in effect if dontbreaklong is not set.")
 
