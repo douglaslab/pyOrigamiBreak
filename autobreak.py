@@ -1503,10 +1503,24 @@ class AutoBreak:
         root, ext        = os.path.splitext(tail)
 
         # Output files
+        self.json_start_output  = self.output_directory+'/'+root+'_start.json'
+
         self.json_legacy_output = self.output_directory+'/'+root+'_autobreak_legacy.json'
         self.json_cn25_output   = self.output_directory+'/'+root+'_autobreak_cn25.json'
 
-    def write_part_to_json(self):
+    def write_part_to_json(self, filename, legacy_option=True):
+        '''
+        Write part to json
+        '''
+        self.origami.doc.writeToFile(filename, legacy=legacy_option)
+
+    def write_start_part_to_json(self):
+        '''
+        Write the starting point for autobreak
+        '''
+        self.origami.doc.writeToFile(self.json_start_output, legacy=True)
+
+    def write_final_part_to_json(self):
         '''
         Write cadnano part to json
         '''
@@ -1561,8 +1575,6 @@ class AutoBreak:
         '''
         Run basic autobreak protocol
         '''
-        # Define json output
-        self.define_json_output()
 
         # Make break-break graph
         self.initialize()
@@ -1943,20 +1955,21 @@ class BreakEdge:
         self.dna_list = [dna for dna in self.dna_list if len(dna)]
 
         # Determine Tm
-        self.Tm_list     = np.array([utilities.sequence_to_Tm(dna) for dna in self.dna_list])
+        self.Tm_list     = np.array([utilities.sequence_to_Tm(dna.strip()) for dna in self.dna_list])
 
         # Determine lengths
-        self.length_list = np.array([len(dna) for dna in self.dna_list])
+        self.ssDNA_length_list = np.array([len(dna) for dna in self.dna_list])
+        self.dsDNA_length_list = np.array([len(dna.strip()) for dna in self.dna_list])
 
         # Determine the edge weights
         self.edge_Tm     = max(self.Tm_list)
 
         # Length parameters
-        self.edge_maxseq = max(self.length_list)
-        self.edge_num14  = np.sum(self.length_list >= 14)
+        self.edge_maxseq = max(self.dsDNA_length_list)
+        self.edge_num14  = np.sum(self.dsDNA_length_list >= 14)
         self.edge_has14  = int(self.edge_num14 > 0)
 
-        self.edge_num16  = np.sum(self.length_list >= 16)
+        self.edge_num16  = np.sum(self.dsDNA_length_list >= 16)
         self.edge_has16  = int(self.edge_num16 > 0)
 
         # Tm parameters
@@ -2511,6 +2524,12 @@ def main():
         # Prepare origami for autobreak
         new_origami.prepare_origami()
 
+    # Define json output
+    new_autobreak.define_json_output()
+
+    # Write start file
+    new_autobreak.write_start_part_to_json()
+
     # Cluster staples
     new_origami.cluster_oligo_groups()
 
@@ -2518,7 +2537,7 @@ def main():
     new_autobreak.run_autobreak()
 
     # Write result to json
-    new_autobreak.write_part_to_json()
+    new_autobreak.write_final_part_to_json()
 
 
 if __name__ == "__main__":
