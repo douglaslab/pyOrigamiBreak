@@ -82,6 +82,7 @@ def generate_random_sequence(oligo_length):
     '''
     Generate random DNA sequence
     '''
+    return ''.join(np.random.choice(['A', 'C', 'G', 'T'], int(oligo_length)))
 
 
 def generate_nA(oligo_length):

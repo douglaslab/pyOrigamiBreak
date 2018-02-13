@@ -14,7 +14,9 @@ import argparse
 import utilities
 import math
 import time
+import matplotlib.pyplot as plt
 
+from matplotlib import cm
 from tqdm import tqdm
 from cadnano.document import Document
 
@@ -437,6 +439,10 @@ class Strand:
         if self.final_strand:
             self.rev_breaks.append(-1)
 
+        # 7. Check if the rule is all
+        if 'all' in self.break_rule:
+            self.fwd_breaks.extend(np.arange(2,int(self.length)-3))
+
         # Make the breaks array and sort them
         self.fwd_breaks = np.array(sorted(self.fwd_breaks), dtype=int)
         self.rev_breaks = np.array(sorted(self.rev_breaks), dtype=int) + int(self.length)
@@ -556,8 +562,12 @@ class Oligo:
         new_edge.make_connection(start_break, final_break)
         self.end_to_end_edge = new_edge
 
+        # Set edge weight
+        new_edge.edge_weight = self.origami.autobreak.optimize(new_edge)
+        
         # Assign the score
         self.initial_score = new_edge.edge_weight
+        self.Tm_score      = new_edge.edge_Tm
 
     def remove_penalized_solutions(self):
         '''
@@ -725,6 +735,14 @@ class Origami:
         self.very_long_staples_exist      = True
         self.dont_break_very_long_staples = False
 
+    def color_by_Tm(self):
+        '''
+        Color oligos by Tm
+        '''
+
+        float_gradient = linspace(0, 1.0, 256) 
+        colors = [ cm.jet(x) for x in float_gradient]
+
     def set_dont_break_very_long_staples(self, value=False):
         '''
         Set break very long staples
@@ -800,12 +818,6 @@ class Origami:
 
         # Generate break points
         self.generate_break_points()
-
-        # Break long staples
-        self.break_very_long_staples()
-
-        # Check if there are very long staples
-        self.check_very_long_staples()
 
     def get_cadnano_strand(self, vh, idx, direction):
         '''
@@ -1349,7 +1361,7 @@ class Origami:
         else:
             # Assign random sequence
             for scaffold in self.scaffolds:
-                self.scaffold_sequence = utilities.generate_nC(scaffold.length())
+                self.scaffold_sequence = utilities.generate_random_sequence(scaffold.length())
                 scaffold.applySequence(self.scaffold_sequence)
 
     def get_coordinates(self, vh, index):
@@ -1409,11 +1421,11 @@ class AutoBreak:
         self.break_rule                      = ['cross', 'long']
 
         # Maximum number of breaks allowed per oligo for autobreak
-        self.max_num_breaks                  = 70
+        self.max_num_breaks                  = 100000
 
         # Optimization parameters
-        self.optim_shuffle_oligos            = False
-        self.optim_pick_method               = 'random'
+        self.optim_shuffle_oligos            = True
+        self.optim_pick_method               = 'best'
 
         # Output file
         self.json_legacy_output             = 'out_legacy.json'
@@ -1445,6 +1457,7 @@ class AutoBreak:
         self.optim_funcs_dict                = {'14': self._optimize_14,
                                                 '16': self._optimize_16,
                                                 'Tm': self._optimize_Tm,
+                                                'length':self._optimize_length,
                                                 'maxseq': self._optimize_maxseq,
                                                 'glength': self._gauss_length,
                                                 'gmaxseq': self._gauss_maxseq,
@@ -1453,6 +1466,7 @@ class AutoBreak:
         self.optim_params_dict              = {'14': [],
                                                '16': [],
                                                'Tm': [],
+                                               'length':[],
                                                'maxseq': [self.optim_maxseq_length],
                                                'glength': [self.optim_length_mean, self.optim_length_tolerance],
                                                'gmaxseq': [self.optim_maxseq_mean, self.optim_maxseq_tolerance],
@@ -1469,27 +1483,12 @@ class AutoBreak:
         RULE1. If there is no cross in break rule,
                make oligo solution and global solution number 1
                since Optimization yields the best result
-
-        RULE2. If oligo solution number is 1, break rule has cross
-               and pick method is best, then
-               There is no need for making global solution number higher than 1
-
-        RULE3. If oligo solution number is 1, pick method is the best
         '''
 
         # RULE 1
         if 'cross' not in self.break_rule:
             self.NUM_OLIGO_SOLUTIONS  = 1
             self.NUM_GLOBAL_SOLUTIONS = 1
-
-        # RULE 2
-        if 'cross' in self.break_rule and not self.optim_shuffle_oligos and self.NUM_OLIGO_SOLUTIONS == 1:
-            self.NUM_GLOBAL_SOLUTIONS = 1
-
-        # RULE 3
-        if self.NUM_OLIGO_SOLUTIONS == 1:
-            self.optim_pick_method = 'best'
-
 
     def set_output_directory(self, output_directory):
         '''
@@ -1600,6 +1599,16 @@ class AutoBreak:
 
         # Break best solutions
         self.break_best_solutions()
+
+    def determine_oligo_scores(self):
+        '''
+        Determine oligo scores from design
+        '''
+        # Make break-break graph
+        self.initialize()
+
+        # Determine initial scores
+        self.determine_initial_scores()
 
     def create_independent_group_solutions(self):
         '''
@@ -1814,6 +1823,12 @@ class AutoBreak:
         Optimization function 16
         '''
         return edge.edge_has16
+
+    def _optimize_length(self, edge):
+        '''
+        Optimization function 16
+        '''
+        return edge.edge_length
 
     def _optimize_maxseq(self, edge):
         '''
@@ -2396,13 +2411,16 @@ def main():
     parser.add_argument("-i",   "--input",    type=str,
                         help="Cadnano json file")
 
-    parser.add_argument("-r",   "--rule",     type=str, default='cross.long',
+    parser.add_argument("-read",   "--read",  action='store_true',
+                        help="Read-only to determine oligo scores")
+
+    parser.add_argument("-rule",   "--rule",     type=str, default='cross.long',
                         help="Break rule")
 
-    parser.add_argument("-s",   "--score",     type=str, default='product.sum',
+    parser.add_argument("-score",   "--score",     type=str, default='product.sum',
                         help="Optimization score function")
 
-    parser.add_argument("-f",   "--func",     type=str, default='14.glength:45:5',
+    parser.add_argument("-func",   "--func",     type=str, default='14.glength:45:5',
                         help="Optimization function")
 
     parser.add_argument("-out",   "--output",   type=str, default='.',
@@ -2411,34 +2429,14 @@ def main():
     parser.add_argument("-seq",   "--sequence", type=str, default=None,
                         help="Sequence file in txt")
 
-    parser.add_argument("-osol",   "--osol",     type=int, default=1,
-                        help="Solutions per oligo")
-
-    parser.add_argument("-gsol",   "--gsol",     type=int,
-                        help="Global solutions", default=10)
-
-    parser.add_argument("-ks",   "--kselect",  type=str,
-                        help="Selection method for k-shortest path",
-                        choices=['best', 'random'], default='best')
-
-    parser.add_argument("-pm",   "--pmethod",  type=str, default='best', choices=['best', 'random'],
-                        help="Method for stepwise break solution picking")
-
-    parser.add_argument("-shuffle",   "--shuffle",  action='store_true',
-                        help="Shuffle oligos during stepwise solution determination")
-
-    parser.add_argument("-dontb",   "--dontbreaklong",  action='store_true',
-                        help="Dont break very long oligos that have more X number of breaks")
+    parser.add_argument("-nsol",   "--nsol",     type=int,
+                        help="Number of solutions", default=50)
 
     parser.add_argument("-v",   "--verbose",  action='store_true',
                         help="Verbose output")
 
     parser.add_argument("-seed",   "--seed",  type=int, default=0,
                         help="Random seed")
-
-    parser.add_argument("-maxb",   "--maxbreak",   type=int, default=10000,
-                        help="Maximum number of breaks allowed for an oligo.\
-                        This parameter is in effect if dontbreaklong is not set.")
 
     args = parser.parse_args()
 
@@ -2451,18 +2449,13 @@ def main():
     input_filename          = args.input
     output_directory        = args.output
     sequence_filename       = args.sequence
+    read_only               = args.read
     break_rule              = parse_break_rule(args.rule)
     score_func              = parse_score_function(args.score)
     optimization_func       = parse_optim_function(args.func)
-    sols_per_oligo          = args.osol
-    global_solutions        = args.gsol
-    k_selection_method      = args.kselect
-    pick_method             = args.pmethod
-    shuffle_oligos               = args.shuffle
-    dont_break_very_long_staples = args.dontbreaklong
-    max_num_breaks               = args.maxbreak
-    verbose_output               = args.verbose
-    random_seed                  = args.seed
+    global_solutions        = args.nsol
+    verbose_output          = args.verbose
+    random_seed             = args.seed
 
     # Check if input file exists
     if not os.path.isfile(input_filename):
@@ -2492,25 +2485,13 @@ def main():
     new_autobreak.set_output_directory(output_directory)
 
     # Set solution numbers
-    new_autobreak.set_solution_nums(sols_per_oligo, global_solutions)
+    new_autobreak.set_solution_nums(1, global_solutions)
 
     # Set optimization  functions
     new_autobreak.set_optimization_func(optimization_func)
 
     # Set score functions
     new_autobreak.set_score_func(score_func)
-
-    # Set maximum number of breaks
-    new_autobreak.set_maximum_breaks(max_num_breaks)
-
-    # Set k-shortest path selection method
-    new_autobreak.set_k_select(k_selection_method)
-
-    # Set solution picking method
-    new_autobreak.set_pick_method(pick_method)
-
-    # Set oligo shuffle parameter
-    new_autobreak.set_oligo_shuffle_parameter(shuffle_oligos)
 
     # Preprocess optimization parameters
     new_autobreak.preprocess_optim_params()
@@ -2524,25 +2505,25 @@ def main():
     # Set sequence filename
     new_origami.set_sequence_file(sequence_filename)
 
-    # Set break very long staples
-    new_origami.set_dont_break_very_long_staples(dont_break_very_long_staples)
-
-    while new_origami.is_there_very_long_staples():
-
-        # Prepare origami for autobreak
-        new_origami.prepare_origami()
+    # Prepare origami for autobreak
+    new_origami.prepare_origami()
 
     # Define json output
     new_autobreak.define_json_output()
 
-    # Write start file
-    new_autobreak.write_start_part_to_json()
-
     # Cluster staples
     new_origami.cluster_oligo_groups()
 
-    # Run autobreak
-    new_autobreak.run_autobreak()
+    # Check if it is a read-only or autobreak run
+    if read_only:
+        # Read only the scores
+        new_autobreak.determine_oligo_scores()
+    else:
+        # Run autobreak
+        new_autobreak.run_autobreak()
+
+    # Get oligos to color based on Tm
+
 
     # Write result to json
     new_autobreak.write_final_part_to_json()
