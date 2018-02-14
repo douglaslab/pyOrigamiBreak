@@ -6,7 +6,6 @@
 # @Version : $Id$
 
 import numpy as np
-import contextlib
 
 # CONSTANTS
 INFINITY = 1E6
@@ -20,7 +19,8 @@ INFINITY = 1E6
 SCAF_CONC  = 10E-9
 STAP_CONC  = 100E-9
 
-MAGNESIUM  = 10E-3
+MAGNESIUM  = 12.5E-3
+TRIS       = 40E-3
 R          = 0.593/298.15
 
 TUPLE_ENTHALPY = {'AA': -7.6,
@@ -106,11 +106,13 @@ def sequence_to_Tm(sequence):
 
     if len(sequence) == 0:
         return None
-    elif len(sequence) == 1:
-        return -273.15
 
     # Count the number of A:T on the ends
     end_AT = (sequence[0] == 'T' or sequence[0] == 'A') + (sequence[-1] == 'T' or sequence[-1] == 'A')
+
+    # If sequence length is 1, check only the first base
+    if len(sequence) == 1:
+        end_AT = (sequence[0] == 'T' or sequence[0] == 'A')
 
     dH     = (TUPLE_ENTHALPY['INIT'] +
               sum([TUPLE_ENTHALPY[sequence[i:i+2]] for i in range(len(sequence)-1)]) +
@@ -139,7 +141,43 @@ def sequence_to_Tm(sequence):
     f = 5.25E-4
     g = 8.31E-5
 
-    Tm_Mg_inv = 1.0/Tm_1MNaCl + a + b*ln_Mg + fGC*(c+d*ln_Mg) + 1.0/(2*(Nbp-1))*(e+f*ln_Mg+g*ln_Mg**2)
-    Tm_Mg     = 1.0/Tm_Mg_inv
+    # If the sequence is less than 2 bp long, dont incorporate Mg
+    if Nbp > 1:
+        Tm_Mg_inv = 1.0/Tm_1MNaCl + a + b*ln_Mg + fGC*(c+d*ln_Mg) + 1.0/(2*(Nbp-1))*(e+f*ln_Mg+g*ln_Mg**2)
+        Tm_Mg     = 1.0/Tm_Mg_inv
+    else:
+        Tm_Mg = Tm_1MNaCl
 
     return Tm_Mg
+
+
+def sequence_to_dG(sequence):
+    '''
+    Convert sequence to dG
+    '''
+    if len(sequence) == 0:
+        return None
+
+    # Count the number of A:T on the ends
+    end_AT = (sequence[0] == 'T' or sequence[0] == 'A') + (sequence[-1] == 'T' or sequence[-1] == 'A')
+
+    # If sequence length is 1, check only the first base
+    if len(sequence) == 1:
+        end_AT = (sequence[0] == 'T' or sequence[0] == 'A')
+
+    dH     = (TUPLE_ENTHALPY['INIT'] +
+              sum([TUPLE_ENTHALPY[sequence[i:i+2]] for i in range(len(sequence)-1)]) +
+              end_AT*TUPLE_ENTHALPY['PENL'])
+    dS    = (TUPLE_ENTROPY['INIT'] +
+             sum([TUPLE_ENTROPY[sequence[i:i+2]] for i in range(len(sequence)-1)]) +
+             end_AT*TUPLE_ENTROPY['PENL'])
+
+    # Determine salt correction
+    dGsalt = 0.368*np.log(0.5*TRIS + 3.3*np.sqrt(MAGNESIUM))*(len(sequence)-1)
+
+    # Determine dG at two temperatures
+
+    dG37 = dH-310.15*dS/1000 + dGsalt
+    dG60 = dH-333.15*dS/1000 + dGsalt
+
+    return dG37, dG60

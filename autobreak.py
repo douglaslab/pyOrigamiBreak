@@ -13,7 +13,6 @@ import sys
 import argparse
 import utilities
 import math
-import time
 import matplotlib.pyplot as plt
 
 from matplotlib import cm
@@ -213,14 +212,6 @@ class GroupBreaksolution:
 
         # Divide penalty score by 2
         self.total_penalty = int(self.total_penalty/2)
-
-
-class Scaffold:
-    def __init__(self):
-        '''
-        Scaffold class
-        '''
-
 
 class OligoGroup:
     def __init__(self):
@@ -441,7 +432,7 @@ class Strand:
 
         # 7. Check if the rule is all
         if 'all' in self.break_rule:
-            self.fwd_breaks.extend(np.arange(2,int(self.length)-3))
+            self.fwd_breaks.extend(np.arange(int(self.length)-1))
 
         # Make the breaks array and sort them
         self.fwd_breaks = np.array(sorted(self.fwd_breaks), dtype=int)
@@ -475,6 +466,7 @@ class Oligo:
         '''
         Oligo class
         '''
+        self.cadnano_oligo       = None
         self.origami             = None
         self.strands             = None
         self.type                = 'broken'
@@ -492,6 +484,26 @@ class Oligo:
         self.chosen_solution       = None
         self.best_score_solution   = None
         self.best_penalty_solution = None
+
+    def build_map(self):
+        '''
+        Build map
+        '''
+        self.map = {}
+        for i in range(self.length):
+            (vh, strandset, baseidx) = self.cadnano_oligo.getAbsolutePositionAtLength(i)
+
+            # Determine forward
+            isForward = int((strandset+1)%2)
+
+            # Determine direction
+            direction = -1 + 2*isForward
+
+            # Build a key
+            key = (vh, baseidx, direction)
+
+            # Assign the value
+            self.map[key] = i
 
     def break_in_half(self):
         '''
@@ -564,7 +576,7 @@ class Oligo:
 
         # Set edge weight
         new_edge.edge_weight = self.origami.autobreak.optimize(new_edge)
-        
+
         # Assign the score
         self.initial_score = new_edge.edge_weight
         self.Tm_score      = new_edge.edge_Tm
@@ -727,13 +739,26 @@ class Origami:
         self.break_edge_map = {}
         self.oligo_groups   = None
 
-        self.staples       = None
-        self.scaffolds     = None
-        self.idnums        = None
+        self.cadnano_oligos = None
+        self.staples        = None
+        self.scaffolds      = None
+        self.idnums         = None
 
         # Keeps whether very long staples exist
         self.very_long_staples_exist      = True
         self.dont_break_very_long_staples = False
+
+    def is_dsDNA(self, vh, idx):
+        '''
+        Check if it is dsDNA
+        '''
+        forward_strand = self.get_cadnano_strand(vh, idx, True)
+        reverse_strand = self.get_cadnano_strand(vh, idx, False)
+
+        if forward_strand and reverse_strand:
+            return True
+        else:
+            return False
 
     def color_by_Tm(self):
         '''
@@ -804,6 +829,9 @@ class Origami:
         # Read scaffolds and staples
         self.read_staples()
 
+        # Read scaffolds
+        self.read_scaffolds()
+
         # Sort staple by length
         self.sort_staples_by_length()
 
@@ -872,12 +900,13 @@ class Origami:
         previous_strand.distance    = 0
 
         # Create Oligo object
-        new_oligo             = Oligo()
-        new_oligo.type        = oligo_type
-        new_oligo.circular    = oligo.isCircular()
-        new_oligo.null_strand = previous_strand
-        new_oligo.length      = oligo.length()
-        new_oligo.origami     = self
+        new_oligo               = Oligo()
+        new_oligo.type          = oligo_type
+        new_oligo.circular      = oligo.isCircular()
+        new_oligo.null_strand   = previous_strand
+        new_oligo.length        = oligo.length()
+        new_oligo.origami       = self
+        new_oligo.cadnano_oligo = oligo 
 
         # Get 5p strand
         strand5p              = oligo.strand5p()
@@ -1126,6 +1155,7 @@ class Origami:
             oligo.null_break.oligo                = oligo
             oligo.null_break.order_id             = order_id_counter
             oligo.null_break.origami              = self
+            oligo.null_break.dsDNA                = self.is_dsDNA(oligo.null_break.vh, oligo.null_break.idx)
 
             # Add null oligo to break list
             oligo.breaks.append(oligo.null_break)
@@ -1164,6 +1194,11 @@ class Origami:
                     new_break.key                  = (new_break.vh, new_break.idx, new_break.direction)
                     new_break.order_id             = order_id_counter
                     new_break.origami              = self
+                    new_break.dsDNA                = self.is_dsDNA(new_break.vh, new_break.idx)
+
+                    # If the break point is not located on dsDNA segment, dont break
+                    if not new_break.dsDNA:
+                        new_break.dont_break = True
 
                     # Assign sequence to break object
                     new_break.sequence    = current_strand.sequences[sequence_id]
@@ -1211,6 +1246,9 @@ class Origami:
             else:
                 # If the oligo is not circular make the final break node final node
                 oligo.final_break = previous_break
+
+                # Make the final break valid for breaking even if it is not dsDNA
+                oligo.final_break.dont_break = False
 
             # Add breaks to origami list
             self.breaks += oligo.breaks
@@ -1317,19 +1355,26 @@ class Origami:
         '''
         self.read_oligo(scaffold, oligo_type='scaffold')
 
+    def build_scaffold_maps(self):
+        '''
+        Build scaffold maps
+        '''
+        for oligo in self.oligos['scaffold']:
+            oligo.build_map()
+
     def get_oligos(self):
         '''
         Get oligos
         '''
-        self.oligos = self.part.oligos()
-        self.oligos = sorted(self.oligos, key=lambda x: x.length(), reverse=True)
+        self.cadnano_oligos = self.part.oligos()
+        self.cadnano_oligos = sorted(self.cadnano_oligos, key=lambda x: x.length(), reverse=True)
 
         # Initialize the scaffolds and staples
         self.scaffolds = []
         self.staples   = []
 
         # Iterate over oligos
-        for oligo in self.oligos:
+        for oligo in self.cadnano_oligos:
             strand5p  = oligo.strand5p()
             vh        = strand5p.idNum()
             isForward = strand5p.isForward()
@@ -1582,9 +1627,6 @@ class AutoBreak:
         # Make break-break graph
         self.initialize()
 
-        # Determine initial scores
-        self.determine_initial_scores()
-
         # Create stepwise group solutions
         self.create_stepwise_group_solutions()
 
@@ -1676,6 +1718,9 @@ class AutoBreak:
 
                         # Make the connection
                         new_edge.make_connection(current_break, next_break)
+
+                        # Make loop edge
+                        new_edge.make_loop_edge()
 
                         # Set edge weight
                         new_edge.edge_weight = self.optimize(new_edge)
@@ -1998,11 +2043,13 @@ class BreakEdge:
         # Set edge weight
         self.set_edge_weight()
 
-        # Assign loop parameters and loop edge
-        if from_break == to_break:
+    def make_loop_edge(self):
+        '''
+        Make loop edge
+        '''
+        if self.current_break == self.next_break:
             self.isloop                  = True
             self.current_break.loop_edge = self
-
 
 class BreakPath:
     def __init__(self, break_node, break_edge=None, score=0):
@@ -2508,6 +2555,8 @@ def main():
     # Prepare origami for autobreak
     new_origami.prepare_origami()
 
+    new_origami.build_scaffold_maps()
+
     # Define json output
     new_autobreak.define_json_output()
 
@@ -2523,8 +2572,6 @@ def main():
         new_autobreak.run_autobreak()
 
     # Get oligos to color based on Tm
-
-
     # Write result to json
     new_autobreak.write_final_part_to_json()
 
