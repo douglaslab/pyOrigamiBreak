@@ -13,9 +13,7 @@ import sys
 import argparse
 import utilities
 import math
-import matplotlib.pyplot as plt
 
-from matplotlib import cm
 from tqdm import tqdm
 from cadnano.document import Document
 
@@ -835,8 +833,14 @@ class Origami:
         # Sort staple by length
         self.sort_staples_by_length()
 
-        # Generate crossovers
-        self.generate_crossovers()
+        # Generate staple crossovers
+        self.generate_staple_crossovers()
+
+        # Generate scaffold crossovers
+        self.generate_scaffold_crossovers()
+
+        # Link crossovers
+        self.link_crossovers()
 
         # Generate sequences
         self.generate_sequences()
@@ -966,14 +970,15 @@ class Origami:
         if not new_oligo.circular:
             previous_strand.final_strand = True
 
-    def generate_crossovers(self):
+    def generate_staple_crossovers(self):
         '''
-        Generate crossover objects
+        Generate staple crossover objects
         '''
 
         # Initialize the crossovers for the origami
         self.crossovers = {}
 
+        # Read staple crossovers
         for oligo in self.oligos['staple']:
             # Initialize crossovers for the oligo
             oligo.crossovers = {}
@@ -997,7 +1002,7 @@ class Origami:
                     new_crossover.oligo          = oligo
                     new_crossover.current_strand = current_strand
                     new_crossover.next_strand    = next_strand
-
+                    new_crossover.type           = 'staple'
                     new_crossover.neighbor       = None
                     new_crossover.neighbor_key   = (new_crossover.vh3p, new_crossover.idx+new_crossover.direction,
                                                     -new_crossover.direction)
@@ -1009,6 +1014,49 @@ class Origami:
                 # Update current strand
                 current_strand          = current_strand.next_strand
 
+    def generate_scaffold_crossovers(self):
+        '''
+        Generate scaffold crossovers
+        '''
+        # Read scaffold crossovers
+        for oligo in self.oligos['scaffold']:
+            # Initialize crossovers for the oligo
+            oligo.crossovers = {}
+
+            # Get current strand
+            current_strand = oligo.null_strand.next_strand
+
+            # Iterate over the strands
+            while current_strand:
+                if not current_strand.final_strand:
+
+                    # Get the connected strand
+                    next_strand   = current_strand.next_strand or oligo.null_strand.next_strand
+
+                    new_crossover = Crossover()
+                    new_crossover.vh5p           = current_strand.vh
+                    new_crossover.vh3p           = next_strand.vh
+                    new_crossover.idx            = current_strand.idx3p+current_strand.direction
+                    new_crossover.direction      = -current_strand.direction
+                    new_crossover.key            = (new_crossover.vh5p, new_crossover.idx, new_crossover.direction)
+                    new_crossover.oligo          = oligo
+                    new_crossover.current_strand = current_strand
+                    new_crossover.next_strand    = next_strand
+                    new_crossover.type           = 'scaffold'
+                    new_crossover.neighbor       = None
+                    new_crossover.neighbor_key   = (new_crossover.vh3p, new_crossover.idx+new_crossover.direction,
+                                                    -new_crossover.direction)
+
+                    # Add crossovers to the list
+                    oligo.crossovers[new_crossover.key] = new_crossover
+                    self.crossovers[new_crossover.key]  = new_crossover
+
+                # Update current strand
+                current_strand          = current_strand.next_strand
+    def link_crossovers(self):
+        '''
+        Link crossovers
+        '''
         # Check crossover neighbors
         for key in self.crossovers:
 
@@ -1195,6 +1243,8 @@ class Origami:
                     new_break.order_id             = order_id_counter
                     new_break.origami              = self
                     new_break.dsDNA                = self.is_dsDNA(new_break.vh, new_break.idx)
+                    new_break.crossover            = None
+                    new_break.location             = 'internal'
 
                     # If the break point is not located on dsDNA segment, dont break
                     if not new_break.dsDNA:
@@ -1247,8 +1297,13 @@ class Origami:
                 # If the oligo is not circular make the final break node final node
                 oligo.final_break = previous_break
 
-                # Make the final break valid for breaking even if it is not dsDNA
+                # Make the start and final break valid for breaking
+                oligo.start_break.dont_break = False
                 oligo.final_break.dont_break = False
+
+                # Set the terminus break types
+                oligo.start_break.location = 'terminus'
+                oligo.final_break.location = 'terminus'
 
             # Add breaks to origami list
             self.breaks += oligo.breaks
@@ -1270,11 +1325,16 @@ class Origami:
 
                 # Get neighbor break
                 if current_crossover:
-                    current_break.type = 'crossover'
+                    # Determine break type for the strategy to break
+                    if current_crossover.type == 'staple':
+                        current_break.type = 'crossover'
+                    else:
+                        current_break.type = 'break'
+
                     # If a neighbor exists make the connection
                     if current_crossover.neighbor:
                         current_break.neighbor_break = current_crossover.neighbor.break_node
-                    else:
+                    elif current_break.location == 'internal':
                         current_break.dont_break = True
                 else:
                     current_break.type = 'break'
