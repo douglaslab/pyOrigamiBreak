@@ -26,6 +26,18 @@ class Sequence:
         self.dna           = None
         self.next_sequence = None
 
+    def assign_scaffold_positions(self):
+        '''
+        Assign scaffold positions
+        '''
+        self.scaffoldPos = []
+        for idx in range(self.idx5p, self.idx3p+self.direction, self.direction):
+            # Get scaffold position
+            scaffold_positions = self.origami.get_scaffold_positions(self.idNum, idx)
+
+             # Add new positions to list
+            self.scaffoldPos.extend(scaffold_positions)
+
 
 class OligoBreakSolution:
     def __init__(self):
@@ -182,7 +194,7 @@ class GroupBreaksolution:
 
             # If the solution doesnt exist move to next break solution
             if not break_solution:
-                print(key, break_solution)
+                print('SOLUTION DOESNT EXIST',key, break_solution)
                 self.complete = False
                 continue
 
@@ -210,6 +222,7 @@ class GroupBreaksolution:
 
         # Divide penalty score by 2
         self.total_penalty = int(self.total_penalty/2)
+
 
 class OligoGroup:
     def __init__(self):
@@ -284,7 +297,7 @@ class OligoGroup:
 
         # Number of solutions
         for i in tqdm(range(num_global_solutions), desc='Global loop', leave=False,
-                            dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+                      dynamic_ncols=True, bar_format='{l_bar}{bar}'):
 
             # Reset temporary neighbor constraints
             self.reset_temp_neighbor_constraints()
@@ -354,6 +367,19 @@ class OligoGroup:
         for group_solution in self.group_solutions:
             group_solution.print_solution()
 
+class Nucleotide:
+    def __init__(self):
+        '''
+        Nucleotide class
+        '''
+        self.vh        = None
+        self.idx       = None
+        self.direction = None
+        self.key       = None
+        self.dsDNA     = False
+
+        self.next_nucleotide     = None
+        self.previous_nucleotide = None
 
 class Strand:
     def __init__(self):
@@ -430,7 +456,7 @@ class Strand:
 
         # 7. Check if the rule is all
         if 'all' in self.break_rule:
-            self.fwd_breaks.extend(np.arange(int(self.length)-1))
+            self.fwd_breaks.extend(np.arange(1,int(self.length)-2))
 
         # Make the breaks array and sort them
         self.fwd_breaks = np.array(sorted(self.fwd_breaks), dtype=int)
@@ -482,26 +508,6 @@ class Oligo:
         self.chosen_solution       = None
         self.best_score_solution   = None
         self.best_penalty_solution = None
-
-    def build_map(self):
-        '''
-        Build map
-        '''
-        self.map = {}
-        for i in range(self.length):
-            (vh, strandset, baseidx) = self.cadnano_oligo.getAbsolutePositionAtLength(i)
-
-            # Determine forward
-            isForward = int((strandset+1)%2)
-
-            # Determine direction
-            direction = -1 + 2*isForward
-
-            # Build a key
-            key = (vh, baseidx, direction)
-
-            # Assign the value
-            self.map[key] = i
 
     def break_in_half(self):
         '''
@@ -746,6 +752,69 @@ class Origami:
         self.very_long_staples_exist      = True
         self.dont_break_very_long_staples = False
 
+
+    def assign_scaffold_positions(self):
+        '''
+        Assign scaffold positions for the strands
+        '''
+        for oligo in self.oligos['staple']:
+
+            # Assign current strand
+            current_strand = oligo.null_strand.next_strand
+
+            # Iterate over each strand
+            while current_strand:
+                direction = current_strand.direction
+                vh        = current_strand.vh
+                idx5p     = current_strand.idx5p
+                idx3p     = current_strand.idx3p
+                
+                # Keep the positions
+                current_strand.scaffoldPos  = []
+
+                for idx in range(idx5p, idx3p+direction, direction):
+                    # Get scaffold position
+                    scaffold_positions = self.get_scaffold_positions(vh, idx)
+
+                    # Add new positions to list
+                    current_strand.scaffoldPos.extend(scaffold_positions)
+
+                # Update current strand
+                current_strand = current_strand.next_strand
+
+    def get_scaffold_positions(self, vh, idx):
+        '''
+        Get scaffold position
+        '''
+        # Make the key
+        key = (vh, idx)
+
+        if key in self.key2scaffold:
+            if self.key2scaffold[key] == -1:
+                return []
+            else:
+                return self.key2scaffold[key]
+        else:
+            return [None]
+
+    def get_current_nucleotide(self, key):
+        '''
+        Get nucleotide from nucleotide map
+        '''
+        if key in self.nucleotide_map:
+            return self.nucleotide_map[key]
+        else:
+            return None
+
+    def get_next_nucleotide(self, key):
+        '''
+        Get next nucleotide
+        '''
+        if key in self.nucleotide_map:
+            return self.nucleotide_map[key].next_nucleotide
+        else:
+            return None
+
     def is_dsDNA(self, vh, idx):
         '''
         Check if it is dsDNA
@@ -762,9 +831,6 @@ class Origami:
         '''
         Color oligos by Tm
         '''
-
-        float_gradient = linspace(0, 1.0, 256) 
-        colors = [ cm.jet(x) for x in float_gradient]
 
     def set_dont_break_very_long_staples(self, value=False):
         '''
@@ -824,11 +890,17 @@ class Origami:
         # Read sequence file
         self.read_sequence()
 
+        # Read scaffolds
+        self.read_scaffolds()
+
         # Read scaffolds and staples
         self.read_staples()
 
-        # Read scaffolds
-        self.read_scaffolds()
+        # Build scaffold map
+        self.build_scaffold_map()
+
+        # Assign scaffold positions
+        self.assign_scaffold_positions()
 
         # Sort staple by length
         self.sort_staples_by_length()
@@ -842,14 +914,29 @@ class Origami:
         # Link crossovers
         self.link_crossovers()
 
-        # Generate sequences
-        self.generate_sequences()
+        # Build nucleotide map
+        self.build_nucleotide_map()
+
+        # Generate dsDNA sequences
+        self.generate_dsDNA_sequences()
+
+        # Generate ssDNA sequences
+        self.generate_ssDNA_sequences()
+
+        # Connect the sequences
+        self.connect_sequences()
 
         # Apply break rules
         self.apply_break_rules()
 
         # Generate break points
         self.generate_break_points()
+
+        # Connect the break boints and set break constraints based on connectivity
+        self.connect_break_points()
+
+        # Apply crossover rule
+        self.apply_cross_rule()
 
     def get_cadnano_strand(self, vh, idx, direction):
         '''
@@ -910,7 +997,7 @@ class Origami:
         new_oligo.null_strand   = previous_strand
         new_oligo.length        = oligo.length()
         new_oligo.origami       = self
-        new_oligo.cadnano_oligo = oligo 
+        new_oligo.cadnano_oligo = oligo
 
         # Get 5p strand
         strand5p              = oligo.strand5p()
@@ -1053,6 +1140,7 @@ class Origami:
 
                 # Update current strand
                 current_strand          = current_strand.next_strand
+
     def link_crossovers(self):
         '''
         Link crossovers
@@ -1067,7 +1155,7 @@ class Origami:
             if neighbor_key in self.crossovers:
                 self.crossovers[key].neighbor = self.crossovers[neighbor_key]
 
-    def generate_sequences(self):
+    def generate_dsDNA_sequences(self):
         '''
         Generate sequences from strands
         '''
@@ -1078,11 +1166,13 @@ class Origami:
 
             current_strand = oligo.null_strand.next_strand
 
-            # Make null sequence object
-            previous_sequence = Sequence()
-            current_strand.null_sequence = previous_sequence
-
             while current_strand:
+                # Make null sequence object
+                previous_sequence = Sequence()
+                current_strand.null_sequence               = previous_sequence
+                current_strand.null_sequence.next_sequence = None
+
+                # Get complementary strands
                 complement_strands = current_strand.complement_strands
 
                 # Strand sequence positions
@@ -1109,7 +1199,152 @@ class Origami:
                     new_sequence.idx5p, new_sequence.idx3p = ((new_sequence.idxLow, new_sequence.idxHigh)
                                                               if current_strand.forward
                                                               else (new_sequence.idxHigh, new_sequence.idxLow))
-                    new_sequence.forward = current_strand.forward
+                    new_sequence.forward   = current_strand.forward
+                    new_sequence.type      = 'dsDNA'
+                    new_sequence.direction = current_strand.direction
+                    new_sequence.strand    = current_strand
+                    new_sequence.origami   = self
+
+                    # Assign string indexes
+                    new_sequence.strLow  = (current_strand.direction*(new_sequence.idx5p - current_strand.idx5p) +
+                                            current_strand.get_inserts(new_sequence.idx5p, current_strand.idx5p))
+                    new_sequence.strHigh = (current_strand.direction*(new_sequence.idx3p - current_strand.idx5p) +
+                                            current_strand.get_inserts(new_sequence.idx3p, current_strand.idx5p))
+
+                    # Get scaffold positions
+                    new_sequence.assign_scaffold_positions()
+
+                    # Get the total length for the sequence
+                    new_sequence.totalLength = new_sequence.strHigh - new_sequence.strLow + 1
+
+                    # Assign sequence distance from 5' end of oligo
+                    new_sequence.distance = new_sequence.strLow + current_strand.distance
+
+                    # Get the sequence
+                    new_sequence.dna = current_strand.dna[new_sequence.strLow:new_sequence.strHigh+1]
+
+                    # Make the next sequence link
+                    previous_sequence.next_sequence = new_sequence
+
+                    # Make the previous sequence link
+                    new_sequence.previous_sequence = previous_sequence
+
+                    # Update previous sequence
+                    previous_sequence = new_sequence
+
+                # Make the sequence starting position numpy array
+                current_strand.sequence_idxLows = np.array(current_strand.sequence_idxLows)
+
+                # Update current strand
+                current_strand = current_strand.next_strand
+
+    def generate_ssDNA_sequences(self):
+        '''
+        Genereate ssDNA sequences for oligo
+        '''
+        for oligo in self.oligos['staple']:
+
+            # Initialize sequence list for the oligo
+            oligo.sequences = []
+
+            # Get the first strand
+            current_strand = oligo.null_strand.next_strand
+
+            while current_strand:
+
+                # Initialize the start and final idx for the sequence
+                start_idx    = current_strand.idx5p
+                final_idx    = -1
+
+                # Get current sequence
+                current_sequence = current_strand.null_sequence.next_sequence
+
+                # Get previous sequence
+                previous_sequence = current_strand.null_sequence
+
+                # Strand sequence positions
+                current_strand.sequence_idxLows = []
+
+                # Sequence array
+                current_strand.sequences = []
+
+                while current_sequence:
+
+                    # Get final idx
+                    final_idx = current_sequence.idx5p - current_sequence.direction
+
+                    # Criteria to make a new ssDNA sequence
+                    if current_sequence.direction*(final_idx - start_idx) > 0:
+                        # Make sequence object
+                        new_sequence         = Sequence()
+                        new_sequence.idNum   = current_strand.vh
+                        new_sequence.idxLow  = min(start_idx, final_idx)
+                        new_sequence.idxHigh = max(start_idx, final_idx)
+                        new_sequence.length  = new_sequence.idxHigh-new_sequence.idxLow+1
+                        new_sequence.idx5p, new_sequence.idx3p = (start_idx, final_idx)
+                        new_sequence.forward   = current_strand.forward
+                        new_sequence.type      = 'ssDNA'
+                        new_sequence.direction = current_strand.direction
+                        new_sequence.strand    = current_strand
+                        new_sequence.origami   = self
+
+                        # Assign string indexes
+                        new_sequence.strLow  = (current_strand.direction*(new_sequence.idx5p - current_strand.idx5p) +
+                                                current_strand.get_inserts(new_sequence.idx5p, current_strand.idx5p))
+                        new_sequence.strHigh = (current_strand.direction*(new_sequence.idx3p - current_strand.idx5p) +
+                                                current_strand.get_inserts(new_sequence.idx3p, current_strand.idx5p))
+
+                        # Get the total length for the sequence
+                        new_sequence.totalLength = new_sequence.strHigh - new_sequence.strLow + 1
+
+                        # Assign sequence distance from 5' end of oligo
+                        new_sequence.distance = new_sequence.strLow + current_strand.distance
+
+                        # Get the sequence
+                        new_sequence.dna = current_strand.dna[new_sequence.strLow:new_sequence.strHigh+1]
+
+                        # Make the link between the sequences
+                        previous_sequence.next_sequence = new_sequence
+                        new_sequence.previous_sequence  = previous_sequence
+
+                        new_sequence.next_sequence = current_sequence
+                        current_sequence.previous_sequence = new_sequence
+
+                        # Keep the low position
+                        current_strand.sequence_idxLows.append(new_sequence.strLow)
+
+                        # Add new sequence to strand sequence list
+                        current_strand.sequences.append(new_sequence)
+
+                        # Add new sequence to oligo sequence list
+                        oligo.sequences.append(new_sequence)
+
+                    # Add the current sequence values to the lists
+                    current_strand.sequence_idxLows.append(current_sequence.strLow)
+                    current_strand.sequences.append(current_sequence)
+                    oligo.sequences.append(current_sequence)
+
+                    # Update start idx
+                    start_idx = current_sequence.idx3p + current_sequence.direction
+
+                    # Update sequences
+                    previous_sequence = current_sequence
+                    current_sequence  = current_sequence.next_sequence
+
+                # Make the 3p terminal ssDNA sequence
+                final_idx   = current_strand.idx3p
+                if current_strand.direction*(final_idx - start_idx) > 0:
+                    # Make sequence object
+                    new_sequence         = Sequence()
+                    new_sequence.idNum   = current_strand.vh
+                    new_sequence.idxLow  = min(start_idx, final_idx)
+                    new_sequence.idxHigh = max(start_idx, final_idx)
+                    new_sequence.length  = new_sequence.idxHigh-new_sequence.idxLow+1
+                    new_sequence.idx5p, new_sequence.idx3p = (start_idx, final_idx)
+                    new_sequence.forward   = current_strand.forward
+                    new_sequence.type      = 'ssDNA'
+                    new_sequence.direction = current_strand.direction
+                    new_sequence.strand    = current_strand
 
                     # Assign string indexes
                     new_sequence.strLow  = (current_strand.direction*(new_sequence.idx5p - current_strand.idx5p) +
@@ -1123,11 +1358,17 @@ class Origami:
                     # Assign sequence distance from 5' end of oligo
                     new_sequence.distance = new_sequence.strLow + current_strand.distance
 
-                    # Keep the low position
-                    current_strand.sequence_idxLows.append(new_sequence.strLow)
-
                     # Get the sequence
                     new_sequence.dna = current_strand.dna[new_sequence.strLow:new_sequence.strHigh+1]
+
+                    # Make the link between the sequences
+                    previous_sequence.next_sequence = new_sequence
+                    new_sequence.previous_sequence  = previous_sequence
+
+                    new_sequence.next_sequence = None
+
+                    # Keep the low position
+                    current_strand.sequence_idxLows.append(new_sequence.strLow)
 
                     # Add new sequence to strand sequence list
                     current_strand.sequences.append(new_sequence)
@@ -1135,14 +1376,37 @@ class Origami:
                     # Add new sequence to oligo sequence list
                     oligo.sequences.append(new_sequence)
 
-                    # Make the next sequence link
-                    previous_sequence.next_sequence = new_sequence
-
-                    # Update previous sequence
-                    previous_sequence = new_sequence
-
                 # Make the sequence starting position numpy array
                 current_strand.sequence_idxLows = np.array(current_strand.sequence_idxLows)
+
+                # Update current strand
+                current_strand = current_strand.next_strand
+
+    def connect_sequences(self):
+        '''
+        Make the connection between strand sequences
+        '''
+        for oligo in self.oligos['staple']:
+
+            # Get the first strand
+            current_strand = oligo.null_strand.next_strand
+
+            # Assign previous  and current sequences
+            previous_sequence = current_strand.null_sequence
+
+            while current_strand:
+                # Get current sequence
+                current_sequence = current_strand.null_sequence.next_sequence
+
+                # Iterate over the sequence
+                while current_sequence:
+                    # Make the links
+                    previous_sequence.next_sequence = current_sequence
+                    current_sequence.previous_sequence = previous_sequence
+
+                    # Update previous and current sequence
+                    previous_sequence = current_sequence
+                    current_sequence = current_sequence.next_sequence
 
                 # Update current strand
                 current_strand = current_strand.next_strand
@@ -1165,6 +1429,64 @@ class Origami:
 
                 # Update current strand
                 current_strand   = current_strand.next_strand
+
+    def apply_cross_rule(self):
+        '''
+        Apply cross rule
+        '''
+        # If cross is not in the rule list disable crossver break points
+        if 'cross' not in self.break_rule:
+            self.disable_crossovers()
+
+    def determine_longrange_breaks(self):
+        '''
+        Determine long range contacts
+        '''
+        self.long_range_breaks = []
+
+    def build_nucleotide_map(self):
+        '''
+        Make nucleotide map
+        '''
+        # Initialize nucleotide map
+        self.nucleotide_map = {}
+
+        for oligo in self.oligos['staple']:
+
+            # Make a dummy nucleotide
+            previous_nucleotide = Nucleotide()
+            oligo.null_nucleotide = previous_nucleotide
+
+            # Get current strand
+            current_strand = oligo.null_strand.next_strand
+
+            while current_strand:
+                idx5p = current_strand.idx5p
+                idx3p = current_strand.idx3p
+                direction = current_strand.direction
+                for idx in range(idx5p, idx3p+direction, direction):
+                    # Make a new nucleotide
+                    new_nucleotide = Nucleotide()
+                    new_nucleotide.vh = current_strand.vh
+                    new_nucleotide.idx = idx
+                    new_nucleotide.direction = direction
+                    new_nucleotide.key = (new_nucleotide.vh, new_nucleotide.idx,
+                                          new_nucleotide.direction)
+                    new_nucleotide.dsDNA = self.is_dsDNA(new_nucleotide.vh,
+                                                        new_nucleotide.idx)
+                    # Assign new nucleotide
+                    self.nucleotide_map[new_nucleotide.key] = new_nucleotide
+
+                    # Make the links
+                    previous_nucleotide.next_nucleotide = new_nucleotide
+                    new_nucleotide.previous_nucleotide = previous_nucleotide
+
+                    # Update previous nucleotide
+                    previous_nucleotide = new_nucleotide
+
+                # Update current strand
+                current_strand = current_strand.next_strand
+
 
     def generate_break_points(self):
         '''
@@ -1199,11 +1521,19 @@ class Origami:
             oligo.null_break.strand               = current_strand
             oligo.null_break.key                  = (oligo.null_break.vh, oligo.null_break.idx,
                                                      oligo.null_break.direction)
-            oligo.null_break.sequence             = current_strand.sequences[0]
+            oligo.null_break.current_nucleotide   = self.get_current_nucleotide(oligo.null_break.key)
+            oligo.null_break.next_nucleotide      = self.get_next_nucleotide(oligo.null_break.key)
+            oligo.null_break.sequence             = current_strand.sequences[0] if len(current_strand.sequences) > 0 else None
             oligo.null_break.oligo                = oligo
             oligo.null_break.order_id             = order_id_counter
             oligo.null_break.origami              = self
-            oligo.null_break.dsDNA                = self.is_dsDNA(oligo.null_break.vh, oligo.null_break.idx)
+            oligo.null_break.dsDNA                = oligo.null_break.is_dsDNA()
+            oligo.null_break.insert               = current_strand.get_inserts(oligo.null_break.idx,
+                                                                               oligo.null_break.idx)
+
+            # Decide if the break cant be broken
+            if not oligo.null_break.dsDNA or oligo.null_break.insert == -1:
+                oligo.null_break.dont_break = True
 
             # Add null oligo to break list
             oligo.breaks.append(oligo.null_break)
@@ -1214,7 +1544,6 @@ class Origami:
 
             # Iterate over each strand
             while current_strand:
-
                 # Iterate through all positions
                 for i in range(len(current_strand.all_breaks)):
                     # Get break position
@@ -1240,18 +1569,21 @@ class Origami:
                     new_break.direction            = current_strand.direction
                     new_break.distance             = current_strand.distance + break_position_adjusted + 1
                     new_break.key                  = (new_break.vh, new_break.idx, new_break.direction)
+                    new_break.current_nucleotide   = self.get_current_nucleotide(new_break.key)
+                    new_break.next_nucleotide      = self.get_next_nucleotide(new_break.key)
                     new_break.order_id             = order_id_counter
                     new_break.origami              = self
-                    new_break.dsDNA                = self.is_dsDNA(new_break.vh, new_break.idx)
+                    new_break.dsDNA                = new_break.is_dsDNA()
+                    new_break.insert               = current_strand.get_inserts(new_break.idx, new_break.idx)
                     new_break.crossover            = None
                     new_break.location             = 'internal'
 
-                    # If the break point is not located on dsDNA segment, dont break
-                    if not new_break.dsDNA:
+                    # If the break point is not located between dsDNA segments, dont break
+                    if not new_break.dsDNA or new_break.insert != 0:
                         new_break.dont_break = True
 
                     # Assign sequence to break object
-                    new_break.sequence    = current_strand.sequences[sequence_id]
+                    new_break.sequence    = current_strand.sequences[sequence_id] if sequence_id >= 0 else None
 
                     # Assign strand to new break
                     new_break.strand      = current_strand
@@ -1308,8 +1640,17 @@ class Origami:
             # Add breaks to origami list
             self.breaks += oligo.breaks
 
-        # Connect the break boints and set break constraints based on connectivity
-        self.connect_break_points()
+    def disable_crossovers(self):
+        '''
+        Disable all crossover break nodes
+        '''
+        for key in self.crossovers:
+            if self.crossovers[key].break_node is None:
+                continue
+            if self.crossovers[key].break_node.location == 'internal':
+                self.crossovers[key].break_node.dont_break = True
+            else:
+                self.crossovers[key].break_node.dont_break = False
 
     def connect_break_points(self):
         '''
@@ -1334,6 +1675,7 @@ class Origami:
                     # If a neighbor exists make the connection
                     if current_crossover.neighbor:
                         current_break.neighbor_break = current_crossover.neighbor.break_node
+                    # If there is a neighbor and if it is an internal scaffold crossover
                     elif current_break.location == 'internal':
                         current_break.dont_break = True
                 else:
@@ -1415,12 +1757,46 @@ class Origami:
         '''
         self.read_oligo(scaffold, oligo_type='scaffold')
 
-    def build_scaffold_maps(self):
+    def build_scaffold_map(self):
         '''
-        Build scaffold maps
+        Build scaffold map
         '''
-        for oligo in self.oligos['scaffold']:
-            oligo.build_map()
+        # Initialize scaffold maps
+        self.scaffold2key = {}
+        self.key2scaffold = {}
+
+        # Get the first scaffold
+        scaffold = self.oligos['scaffold'][0]
+
+        # Position counter
+        position = 0
+
+        # Assign current strand
+        current_strand = scaffold.null_strand.next_strand
+
+        while current_strand:
+            # Get the position parameters
+            idx5p = current_strand.idx5p
+            idx3p = current_strand.idx3p
+            direction = current_strand.direction
+            vh = current_strand.vh
+
+            for idx in range(idx5p, idx3p+direction, direction):
+                key = (vh ,idx)
+                num_inserts = current_strand.get_inserts(idx, idx)
+                position += (num_inserts+1)
+
+                # Assign the values
+                if position not in self.scaffold2key:
+                    self.scaffold2key[position] = key
+
+                if num_inserts == -1:
+                    self.key2scaffold[key] = -1
+                else:
+                    self.key2scaffold[key] = list(range(position-num_inserts, position+1))[::-1]
+
+            # Update current strand
+            current_strand = current_strand.next_strand
 
     def get_oligos(self):
         '''
@@ -1512,8 +1888,8 @@ class AutoBreak:
         self.LOWER_BOUND                     = 21
 
         # Local and global solutions
-        self.NUM_OLIGO_SOLUTIONS             = 1000
-        self.NUM_GLOBAL_SOLUTIONS            = 1000
+        self.NUM_OLIGO_SOLUTIONS             = 100
+        self.NUM_GLOBAL_SOLUTIONS            = 1
 
         # Score parameters
         self.total_score                     = 0
@@ -1562,7 +1938,8 @@ class AutoBreak:
         self.optim_funcs_dict                = {'14': self._optimize_14,
                                                 '16': self._optimize_16,
                                                 'Tm': self._optimize_Tm,
-                                                'length':self._optimize_length,
+                                                'dG': self._optimize_dG,
+                                                'length': self._optimize_length,
                                                 'maxseq': self._optimize_maxseq,
                                                 'glength': self._gauss_length,
                                                 'gmaxseq': self._gauss_maxseq,
@@ -1571,7 +1948,8 @@ class AutoBreak:
         self.optim_params_dict              = {'14': [],
                                                '16': [],
                                                'Tm': [],
-                                               'length':[],
+                                               'dG': [],
+                                               'length': [],
                                                'maxseq': [self.optim_maxseq_length],
                                                'glength': [self.optim_length_mean, self.optim_length_tolerance],
                                                'gmaxseq': [self.optim_maxseq_mean, self.optim_maxseq_tolerance],
@@ -1747,9 +2125,8 @@ class AutoBreak:
         '''
 
         for oligo in self.origami.oligos['staple']:
-
             # Check oligo length, if the length is within length limits dont break it
-            if oligo.length <= self.MAX_OLIGO_LENGTH and not oligo.circular:
+            if oligo.length < self.LOWER_BOUND:
                 oligo.dont_break = True
 
             # Visit each break object
@@ -1759,7 +2136,6 @@ class AutoBreak:
 
                 # Get next break
                 next_break = current_break.next_break
-
                 # Iterate over the breaks
                 while next_break:
 
@@ -1917,6 +2293,12 @@ class AutoBreak:
             score += np.product(score_list)
         return score
 
+    def _optimize_dG(self, edge):
+        '''
+        Optimization function dG
+        '''
+        return edge.edge_logprob[0]
+
     def _optimize_14(self, edge):
         '''
         Optimization function 14
@@ -2022,8 +2404,13 @@ class BreakEdge:
         Make the connection between self and another edge
         '''
         # Initialize sequence and dna list
-        self.sequence_list = []
-        self.dna_list      = []
+        self.sequence_list  = []
+        
+        self.ssDNA_seq_list = []
+        self.dsDNA_seq_list = []
+
+        self.ssDNA_pos_list = []
+        self.dsDNA_pos_list = []
 
         # Set the break nodes
         self.current_break = from_break
@@ -2055,35 +2442,79 @@ class BreakEdge:
             start_point  = self.current_break.break_point_adjusted+1
             final_point  = self.next_break.break_point_adjusted+1
             dna_sequence = self.current_break.strand.dna[start_point:final_point]
+            position_list= self.current_break.strand.scaffoldPos[start_point:final_point]
 
-            self.dna_list.append(dna_sequence)
+            if len(position_list) > 0:
+                self.ssDNA_pos_list.append(position_list)
+            if len(dna_sequence) > 0:
+                self.ssDNA_seq_list.append(dna_sequence)
         else:
             # 1. Get the 5' sequence
             start_point  = self.current_break.break_point_adjusted+1
             final_point  = self.current_break.sequence.strHigh+1
             dna_sequence = self.current_break.strand.dna[start_point:final_point]
+            position_list= self.current_break.strand.scaffoldPos[start_point:final_point]
 
-            self.dna_list.append(dna_sequence)
+            if len(position_list) > 0:
+                self.ssDNA_pos_list.append(position_list)
+            if len(dna_sequence) > 0:
+                self.ssDNA_seq_list.append(dna_sequence)
+            
             # 2. Get the sequences in between
             for sequence in self.sequence_list[1:-1]:
-                self.dna_list.append(sequence.dna)
+                self.ssDNA_pos_list.append(sequence.scaffoldPos)
+                self.ssDNA_seq_list.append(sequence.dna)
 
             # 3. Get the 3' sequence
             start_point  = self.next_break.sequence.strLow
             final_point  = self.next_break.break_point_adjusted+1
             dna_sequence = self.next_break.strand.dna[start_point:final_point]
+            position_list= self.next_break.strand.scaffoldPos[start_point:final_point]
 
-            self.dna_list.append(dna_sequence)
+            if len(position_list) > 0:
+                self.ssDNA_pos_list.append(position_list)
+            if len(dna_sequence) > 0:
+                self.ssDNA_seq_list.append(dna_sequence)
 
         # Remove empty sequences
-        self.dna_list = [dna for dna in self.dna_list if len(dna)]
+        self.dsDNA_seq_list = [dna.strip() for dna in self.ssDNA_seq_list if len(dna.strip()) > 0]
+        self.dsDNA_pos_list = [list(filter(lambda x: x, pos_list)) for pos_list in self.ssDNA_pos_list]
+
+        # Remove empty lists from positions list
+        self.dsDNA_pos_list = list(filter(lambda x: len(x), self.dsDNA_pos_list))
+        
+        # Determine mean values for the positions
+        self.dsDNA_mean_pos_list = [np.round(np.mean(x)) for x in self.dsDNA_pos_list]
 
         # Determine Tm
-        self.Tm_list     = np.array([utilities.sequence_to_Tm(dna.strip()) for dna in self.dna_list])
+        self.Tm_list       = np.array([utilities.sequence_to_Tm(dna) for dna in self.dsDNA_seq_list])
+        
+        # Determine intrinsic free energies
+        self.dG_intrin_list = np.array([utilities.sequence_to_dG(dna) for dna in self.dsDNA_seq_list])
+        
+        # Get scaffold length
+        scaffold_length = self.origami.oligos['scaffold'][0].length
+        
+        # Determine interfacial coupling energies
+        self.dG_inter_list = np.array([utilities.position_to_loop_dG(self.dsDNA_mean_pos_list[i],
+                                      self.dsDNA_mean_pos_list[i+1], scaffold_length)
+                                      for i in range(len(self.dsDNA_mean_pos_list)-1)])
+
+        # Get total energy
+        self.dG_total = np.sum(self.dG_intrin_list,axis=0)+np.sum(self.dG_inter_list,axis=0)
+
+        # Get RT values
+        RT = 0.593/298.15*np.array([310.15,333.15])
+        
+        # Determine probabilities
+        self.edge_prob = np.exp(-self.dG_total/RT)/(1.0+np.exp(-self.dG_total/RT))
+        
+        # Determine log-probabilities
+        self.edge_logprob = np.log(self.edge_prob)
 
         # Determine lengths
-        self.ssDNA_length_list = np.array([len(dna) for dna in self.dna_list])
-        self.dsDNA_length_list = np.array([len(dna.strip()) for dna in self.dna_list])
+        self.ssDNA_length_list = np.array([len(dna) for dna in self.ssDNA_seq_list])
+        self.dsDNA_length_list = np.array([len(dna) for dna in self.dsDNA_seq_list])
 
         # Determine the edge weights
         self.edge_Tm     = max(self.Tm_list)
@@ -2110,6 +2541,7 @@ class BreakEdge:
         if self.current_break == self.next_break:
             self.isloop                  = True
             self.current_break.loop_edge = self
+
 
 class BreakPath:
     def __init__(self, break_node, break_edge=None, score=0):
@@ -2138,6 +2570,10 @@ class BreakNode:
         self.crossover        = None
         self.loop_edge        = None
 
+        # Nucleotide parameters
+        self.current_nucleotide = None
+        self.next_nucleotide    = None
+
         # State parameters
         self.visited          = False
         self.active           = True
@@ -2149,7 +2585,7 @@ class BreakNode:
         self.oligo_group      = None
 
         # Graph parameter
-        self.score               = 0
+        self.score               = -utilities.INFINITY
         self.best_path_node      = None
         self.best_path_nodes     = None
         self.shortest_paths      = None
@@ -2159,12 +2595,32 @@ class BreakNode:
         self.shortest_score      = 0
         self.order_id            = None
 
+    def is_dsDNA(self):
+        '''
+        Determine if the break node is located on dsDNA
+        '''
+        # Initialize dsDNA parameters
+        current_dsDNA = True
+        next_dsDNA = True
+
+        if self.current_nucleotide:
+            current_dsDNA = self.current_nucleotide.dsDNA
+        else:
+            current_dsDNA = False
+
+        if self.next_nucleotide:
+            next_dsDNA = self.next_nucleotide.dsDNA
+        else:
+            next_dsDNA = False
+
+        return current_dsDNA and next_dsDNA
+
     def reset_break_path(self):
         self.order_id         = -1
         self.traverse_path    = []
         self.best_path_nodes  = []
         self.best_path_node   = None
-        self.score            = 0
+        self.score            = -utilities.INFINITY
         self.visited          = False
         self.shortest_paths   = []
 
@@ -2192,8 +2648,11 @@ class BreakNode:
         '''
         Break to break distance
         '''
-        return ((other_break.distance - self.distance) % self.oligo.length +
-                self.oligo.length*(self == other_break)*self.oligo.circular)
+        distance = other_break.distance - self.distance
+        if distance <= 0 and self.oligo.circular:
+            return distance+self.oligo.length
+        else:
+            return distance
 
     def get_break_order_difference(self, other_break):
         '''
@@ -2317,6 +2776,7 @@ class BreakNode:
         '''
         # Initialize the set and stack
         stack = [self]
+
         while stack:
             # Pop the break node
             new_break = stack.pop(0)
@@ -2335,7 +2795,10 @@ class BreakNode:
                     continue
 
                 # Determine the new score
-                new_score = new_break.score + break_edge.edge_weight
+                if new_break.order_id == 0:
+                    new_score = break_edge.edge_weight
+                else:
+                    new_score = new_break.score + break_edge.edge_weight
 
                 # Update the score based on the existence of a neighbor crossover
                 if new_break.neighbor_break in new_break.best_path_nodes:
@@ -2345,9 +2808,10 @@ class BreakNode:
                 new_break_path = BreakPath(new_break, break_edge, new_score)
 
                 # If new score is higher than the previous one, make a new list
-                if new_score > break_edge.next_break.score:
+                if new_score >= break_edge.next_break.score:
+
                     break_edge.next_break.best_path_node  = new_break_path
-                    break_edge.next_break.best_path_nodes = new_break.best_path_nodes + [new_break] 
+                    break_edge.next_break.best_path_nodes = new_break.best_path_nodes + [new_break]
                     break_edge.next_break.score           = new_score
 
                 # Add next break to connected breaks list
@@ -2362,7 +2826,7 @@ class BreakNode:
             # Make a loop break path object
             loop_break_path = BreakPath(self, self.loop_edge, self.loop_edge.edge_weight)
 
-            if self.loop_edge.edge_weight > final_break.score:
+            if self.loop_edge.edge_weight >= final_break.score:
                 final_break.best_path_node = loop_break_path
                 final_break.score          =  self.loop_edge.edge_weight
 
@@ -2391,7 +2855,7 @@ class BreakNode:
 
         # Assign new break path
         new_break_path = self.best_path_node
-        
+
         # Assign new break
         new_break = new_break_path.break_node
 
@@ -2521,13 +2985,13 @@ def main():
     parser.add_argument("-read",   "--read",  action='store_true',
                         help="Read-only to determine oligo scores")
 
-    parser.add_argument("-rule",   "--rule",     type=str, default='cross.long',
+    parser.add_argument("-rule",   "--rule",     type=str, default='cross.all',
                         help="Break rule")
 
-    parser.add_argument("-score",   "--score",     type=str, default='product.sum',
+    parser.add_argument("-score",   "--score",     type=str, default='sum',
                         help="Optimization score function")
 
-    parser.add_argument("-func",   "--func",     type=str, default='14.glength:45:5',
+    parser.add_argument("-func",   "--func",     type=str, default='dG',
                         help="Optimization function")
 
     parser.add_argument("-out",   "--output",   type=str, default='.',
@@ -2614,8 +3078,6 @@ def main():
 
     # Prepare origami for autobreak
     new_origami.prepare_origami()
-
-    new_origami.build_scaffold_maps()
 
     # Define json output
     new_autobreak.define_json_output()

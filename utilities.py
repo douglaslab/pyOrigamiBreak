@@ -8,7 +8,7 @@
 import numpy as np
 
 # CONSTANTS
-INFINITY = 1E6
+INFINITY = 1E20
 
 # Sequence enthalpy/entropy values at 37C-1M NaCl from SANTALUCIA-HICKS paper
 # https://doi.org/10.1146/annurev.biophys.32.110601.141800 - DOI:10.1146/annurev.biophys.32.110601.141800
@@ -98,6 +98,56 @@ def generate_nC(oligo_length):
     '''
     return 'C'*int(oligo_length)
 
+def get_min_distance(from_position, to_position, oligo_length):
+    '''
+    Get min distance between two positions on a circular oligo
+    '''
+    first_distance  = (to_position - from_position) % oligo_length 
+    second_distance = oligo_length - first_distance
+
+    return min(first_distance, second_distance) 
+
+def end_to_end_distance(num_bases):
+    '''
+    Estimate end to end distance - Units are in nm
+    Model from https://www.sciencedirect.com/science/article/pii/S0022283698918307?via%3Dihub
+    https://doi.org/10.1006/jmbi.1998.1830
+
+    L_base and L_p from https://www.nature.com/articles/nature14860 (doi:10.1038/nature14860)
+    '''
+
+    L_base    = 0.6
+    L_contour = num_bases*L_base
+
+    L_p       = 0.9
+
+    return 2*L_p*L_contour*(1-1.0*L_p/L_contour*(1-np.exp(-1.0*L_contour/L_p)))
+
+
+def distance_to_loop_dG(distance_square):
+    '''
+    Calculate loop entropy
+    distance square is in nm2
+    '''
+    # Equation from https://www.nature.com/articles/nature14860 (doi:10.1038/nature14860)
+    # Divide by 1000 to convert cal/(mol.K) to kcal/(mol.K)
+    effective_concentration = 1.0/6.02E23*(3.0/(2*np.pi*distance_square*1E-18))**(3/2.0)/1000
+    dG37 = -R*310.15*np.log(effective_concentration)
+    dG60 = -R*333.15*np.log(effective_concentration)
+
+    return (dG37, dG60)
+
+def position_to_loop_dG(from_position, to_position, oligo_length):
+    # Get number of minimum number of bases between to location
+    base_distance   = get_min_distance(from_position, to_position, oligo_length)
+
+    #Determine end to end distance^2
+    distance_square = end_to_end_distance(base_distance)
+
+    # Get the free energies
+    energies = distance_to_loop_dG(distance_square)
+
+    return energies
 
 def sequence_to_Tm(sequence):
     '''
@@ -150,7 +200,6 @@ def sequence_to_Tm(sequence):
 
     return Tm_Mg
 
-
 def sequence_to_dG(sequence):
     '''
     Convert sequence to dG
@@ -165,19 +214,25 @@ def sequence_to_dG(sequence):
     if len(sequence) == 1:
         end_AT = (sequence[0] == 'T' or sequence[0] == 'A')
 
-    dH     = (TUPLE_ENTHALPY['INIT'] +
-              sum([TUPLE_ENTHALPY[sequence[i:i+2]] for i in range(len(sequence)-1)]) +
-              end_AT*TUPLE_ENTHALPY['PENL'])
-    dS    = (TUPLE_ENTROPY['INIT'] +
-             sum([TUPLE_ENTROPY[sequence[i:i+2]] for i in range(len(sequence)-1)]) +
-             end_AT*TUPLE_ENTROPY['PENL'])
+    dHtotal = (TUPLE_ENTHALPY['INIT'] +
+               sum([TUPLE_ENTHALPY[sequence[i:i+2]] for i in range(len(sequence)-1)]) +
+               end_AT*TUPLE_ENTHALPY['PENL'])
+    dSbase  = (TUPLE_ENTROPY['INIT'] +
+               sum([TUPLE_ENTROPY[sequence[i:i+2]] for i in range(len(sequence)-1)]) +
+               end_AT*TUPLE_ENTROPY['PENL'])
+
+    # Entropy factor due to concenteration
+    dSconc = R*1000.0*np.log(STAP_CONC-0.5*SCAF_CONC)
 
     # Determine salt correction
-    dGsalt = 0.368*np.log(0.5*TRIS + 3.3*np.sqrt(MAGNESIUM))*(len(sequence)-1)
+    # Salt correction from https://www.nature.com/articles/nature14860(doi:10.1038/nature14860)
+    dSsalt  = 0.368*np.log(0.5*TRIS + 3.3*np.sqrt(MAGNESIUM))*(len(sequence)-1)
+
+    # Get total entropy
+    dStotal = dSbase + dSsalt + dSconc
 
     # Determine dG at two temperatures
+    dG37 = dHtotal - 310.15*dStotal/1000
+    dG60 = dHtotal - 333.15*dStotal/1000
 
-    dG37 = dH-310.15*dS/1000 + dGsalt
-    dG60 = dH-333.15*dS/1000 + dGsalt
-
-    return dG37, dG60
+    return (dG37, dG60)
