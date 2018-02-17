@@ -170,7 +170,7 @@ class GroupBreaksolution:
         Print group solution
         '''
         if self.break_solutions:
-            print('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
+            tqdm.write('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
                   (self.complete, self.total_score, self.total_penalty))
             # Print the solutions
             for oligo_key in self.break_solutions:
@@ -194,7 +194,7 @@ class GroupBreaksolution:
 
             # If the solution doesnt exist move to next break solution
             if not break_solution:
-                print('SOLUTION DOESNT EXIST',key, break_solution)
+                tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0],key[1],key[2]))
                 self.complete = False
                 continue
 
@@ -352,13 +352,19 @@ class OligoGroup:
         self.group_solutions.sort(key=lambda x: x.total_score, reverse=True)
 
         # 2. Assign best total score solution
-        self.best_score_solution = self.group_solutions[0]
+        if len(self.group_solutions) > 0:
+            self.best_score_solution = self.group_solutions[0]
+        else:
+            self.best_score_solution = None
 
         # 3. Sort based on total penalty
         self.group_solutions.sort(key=lambda x: x.total_penalty)
 
         # 4. Assign best penalty solution
-        self.best_penalty_solution = self.group_solutions[0]
+        if len(self.group_solutions) > 0:
+            self.best_penalty_solution = self.group_solutions[0]
+        else:
+            self.best_penalty_solution = None
 
     def print_solutions(self):
         '''
@@ -398,7 +404,7 @@ class Strand:
         self.rev_breaks  = None    # Rev break locations along a strand
 
         # Break rule
-        self.break_rule = ['cross', 'long']
+        self.break_rule = ['xstap','all3']
         self.LONG_STRAND_LENGTH = 21
         self.LONG_STRAND_STEP   = 7
 
@@ -421,7 +427,7 @@ class Strand:
         self.all_breaks = []
 
         # 1. Rule number 1 - Crossover only
-        if 'cross' in self.break_rule:
+        if 'xstap' in self.break_rule:
             self.rev_breaks.append(-1)
 
         # 2. Rule number 2 - Only 3 base away from 5p crossover
@@ -454,9 +460,13 @@ class Strand:
         if self.final_strand:
             self.rev_breaks.append(-1)
 
-        # 7. Check if the rule is all
-        if 'all' in self.break_rule:
+        # 7. Check if the rule is all2
+        if 'all2' in self.break_rule:
             self.fwd_breaks.extend(np.arange(1,int(self.length)-2))
+        
+        # 8. Check if the rule is all3
+        if 'all3' in self.break_rule:
+            self.fwd_breaks.extend(np.arange(2,int(self.length)-3))
 
         # Make the breaks array and sort them
         self.fwd_breaks = np.array(sorted(self.fwd_breaks), dtype=int)
@@ -748,10 +758,20 @@ class Origami:
         self.scaffolds      = None
         self.idnums         = None
 
+        # Structure parameter
+        self.num_crossovers = 0 
+
         # Keeps whether very long staples exist
         self.very_long_staples_exist      = True
         self.dont_break_very_long_staples = False
 
+    def determine_num_crossovers(self):
+        '''
+        Determine total number of crossovers
+        '''
+        self.num_crossovers = 0
+        for oligo in self.oligos['staple']:
+            self.num_crossovers += oligo.num_crossovers
 
     def assign_scaffold_positions(self):
         '''
@@ -925,6 +945,9 @@ class Origami:
 
         # Connect the sequences
         self.connect_sequences()
+
+        # Determine total crossovers
+        self.determine_num_crossovers()
 
         # Apply break rules
         self.apply_break_rules()
@@ -1388,6 +1411,8 @@ class Origami:
         '''
         for oligo in self.oligos['staple']:
 
+            oligo.num_crossovers = 0
+
             # Get the first strand
             current_strand = oligo.null_strand.next_strand
 
@@ -1400,6 +1425,9 @@ class Origami:
 
                 # Iterate over the sequence
                 while current_sequence:
+                    # Update sequence numbers
+                    oligo.num_crossovers += int(current_sequence.type == 'dsDNA')
+
                     # Make the links
                     previous_sequence.next_sequence = current_sequence
                     current_sequence.previous_sequence = previous_sequence
@@ -1414,6 +1442,9 @@ class Origami:
             # For circular oligos connect last sequence to first sequence
             if oligo.circular:
                 previous_sequence.next_sequence = oligo.null_strand.next_strand.sequences[0]
+
+                # For circular oligos add one more crossover
+                oligo.num_crossovers += 1
 
     def apply_break_rules(self):
         '''
@@ -1434,9 +1465,13 @@ class Origami:
         '''
         Apply cross rule
         '''
-        # If cross is not in the rule list disable crossver break points
-        if 'cross' not in self.break_rule:
-            self.disable_crossovers()
+        # If xscaf is not in the rule list disable scaffold crossover break points
+        if 'xscaf' not in self.break_rule:
+            self.disable_scaffold_crossovers()
+
+        # If xstap is not in the rule list disable staple crossover break points
+        if 'xstap' not in self.break_rule:
+            self.disable_staple_crossovers()
 
     def determine_longrange_breaks(self):
         '''
@@ -1640,12 +1675,24 @@ class Origami:
             # Add breaks to origami list
             self.breaks += oligo.breaks
 
-    def disable_crossovers(self):
+    def disable_staple_crossovers(self):
         '''
         Disable all crossover break nodes
         '''
         for key in self.crossovers:
-            if self.crossovers[key].break_node is None:
+            if self.crossovers[key].break_node is None or self.crossovers[key].type == 'scaffold':
+                continue
+            if self.crossovers[key].break_node.location == 'internal':
+                self.crossovers[key].break_node.dont_break = True
+            else:
+                self.crossovers[key].break_node.dont_break = False
+
+    def disable_scaffold_crossovers(self):
+        '''
+        Disable all crossover break nodes
+        '''
+        for key in self.crossovers:
+            if self.crossovers[key].break_node is None or self.crossovers[key].type == 'staple':
                 continue
             if self.crossovers[key].break_node.location == 'internal':
                 self.crossovers[key].break_node.dont_break = True
@@ -1899,10 +1946,10 @@ class AutoBreak:
         self.k_select                        = 'best'
 
         # Break rule
-        self.break_rule                      = ['cross', 'long']
+        self.break_rule                      = ['xstap', 'all3']
 
         # Maximum number of breaks allowed per oligo for autobreak
-        self.max_num_breaks                  = 100000
+        self.max_num_breaks                  = 10000000
 
         # Optimization parameters
         self.optim_shuffle_oligos            = True
@@ -1914,7 +1961,7 @@ class AutoBreak:
         self.output_directory                = '.'
 
         # Optimization function
-        self.optim_args                      = [['14'], ['glength', '45', '5']]
+        self.optim_args                      = [['dG']]
 
         # Maxseq parameter
         self.optim_maxseq_length             = 14
@@ -1932,13 +1979,17 @@ class AutoBreak:
         self.optim_maxseq_tolerance          = 2
 
         # Set optimization score functions
-        self.optim_score_functions           = ['sum', 'product']
+        self.optim_score_functions           = ['sum']
+
+        # Structure factor
+        self.optim_structure_factor         = 1.0 
 
         # Set function dictionary
         self.optim_funcs_dict                = {'14': self._optimize_14,
                                                 '16': self._optimize_16,
                                                 'Tm': self._optimize_Tm,
                                                 'dG': self._optimize_dG,
+                                                'structure': self._optimize_structure,
                                                 'length': self._optimize_length,
                                                 'maxseq': self._optimize_maxseq,
                                                 'glength': self._gauss_length,
@@ -1949,6 +2000,7 @@ class AutoBreak:
                                                '16': [],
                                                'Tm': [],
                                                'dG': [],
+                                               'structure': [self.optim_structure_factor],
                                                'length': [],
                                                'maxseq': [self.optim_maxseq_length],
                                                'glength': [self.optim_length_mean, self.optim_length_tolerance],
@@ -1969,7 +2021,7 @@ class AutoBreak:
         '''
 
         # RULE 1
-        if 'cross' not in self.break_rule:
+        if 'xscaf' not in self.break_rule and 'xstap' not in self.break_rule:
             self.NUM_OLIGO_SOLUTIONS  = 1
             self.NUM_GLOBAL_SOLUTIONS = 1
 
@@ -2044,7 +2096,7 @@ class AutoBreak:
         '''
         self.k_select = k_parameter
 
-    def set_break_rule(self, new_break_rule=['cross', 'long']):
+    def set_break_rule(self, new_break_rule=['xstap', 'all2']):
         '''
         Set break rule
         '''
@@ -2230,14 +2282,13 @@ class AutoBreak:
         '''
 
         # Print total score and crossover penalty for the best solution
-
         tqdm.write('BestSolution: TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
                    (self.total_score, self.total_penalty))
 
         for key in self.best_score_solutions:
-
             # Break group solution
-            self.best_score_solutions[key].break_group_solution()
+            if self.best_score_solutions[key]:
+                self.best_score_solutions[key].break_group_solution()
 
     def calculate_total_score(self):
         '''
@@ -2247,8 +2298,9 @@ class AutoBreak:
         self.total_penalty = 0
         for key in self.best_score_solutions:
             # Break group solution
-            self.total_score   += self.best_score_solutions[key].total_score
-            self.total_penalty += self.best_score_solutions[key].total_penalty
+            if self.best_score_solutions[key]:
+                self.total_score   += self.best_score_solutions[key].total_score
+                self.total_penalty += self.best_score_solutions[key].total_penalty
 
     def set_score_func(self, func_args):
         '''
@@ -2262,7 +2314,7 @@ class AutoBreak:
         '''
         self.optim_args         = func_args
         self.optim_args_funcs   = [function[0] for function in func_args]
-        self.optim_args_params  = [[int(x) for x in function[1:]] for function in func_args]
+        self.optim_args_params  = [[float(x) for x in function[1:]] for function in func_args]
         self.optimize_func_list = []
 
         # Set optimization function parameters
@@ -2293,11 +2345,17 @@ class AutoBreak:
             score += np.product(score_list)
         return score
 
+    def _optimize_structure(self,edge):
+        '''
+        Optimization function for structure
+        '''
+        return edge.edge_structure*self.optim_params_dict['structure'][0]
+
     def _optimize_dG(self, edge):
         '''
         Optimization function dG
         '''
-        return edge.edge_logprob[0]
+        return edge.edge_logprob[1]
 
     def _optimize_14(self, edge):
         '''
@@ -2530,6 +2588,10 @@ class BreakEdge:
         # Tm parameters
         self.edge_numTm  = np.sum(self.Tm_list >= self.LOW_TM)
         self.edge_hasTm  = np.sum(self.edge_numTm > 0)
+
+        # Determine structure score
+        self.edge_num_cross = len(self.dsDNA_seq_list)
+        self.edge_structure = self.edge_num_cross**2.0
 
         # Set edge weight
         self.set_edge_weight()
@@ -2802,13 +2864,13 @@ class BreakNode:
 
                 # Update the score based on the existence of a neighbor crossover
                 if new_break.neighbor_break in new_break.best_path_nodes:
-                    new_score += -utilities.INFINITY
+                    new_score += -utilities.INFINITY*utilities.INFINITY
 
                 # Make new break Path object
                 new_break_path = BreakPath(new_break, break_edge, new_score)
 
                 # If new score is higher than the previous one, make a new list
-                if new_score >= break_edge.next_break.score:
+                if new_score > break_edge.next_break.score:
 
                     break_edge.next_break.best_path_node  = new_break_path
                     break_edge.next_break.best_path_nodes = new_break.best_path_nodes + [new_break]
@@ -2826,7 +2888,7 @@ class BreakNode:
             # Make a loop break path object
             loop_break_path = BreakPath(self, self.loop_edge, self.loop_edge.edge_weight)
 
-            if self.loop_edge.edge_weight >= final_break.score:
+            if self.loop_edge.edge_weight > final_break.score:
                 final_break.best_path_node = loop_break_path
                 final_break.score          =  self.loop_edge.edge_weight
 
@@ -2985,7 +3047,7 @@ def main():
     parser.add_argument("-read",   "--read",  action='store_true',
                         help="Read-only to determine oligo scores")
 
-    parser.add_argument("-rule",   "--rule",     type=str, default='cross.all',
+    parser.add_argument("-rule",   "--rule",     type=str, default='xstap.all3',
                         help="Break rule")
 
     parser.add_argument("-score",   "--score",     type=str, default='sum',
@@ -3001,7 +3063,7 @@ def main():
                         help="Sequence file in txt")
 
     parser.add_argument("-nsol",   "--nsol",     type=int,
-                        help="Number of solutions", default=50)
+                        help="Number of solutions", default=1)
 
     parser.add_argument("-v",   "--verbose",  action='store_true',
                         help="Verbose output")
