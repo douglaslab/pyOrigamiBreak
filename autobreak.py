@@ -5,6 +5,10 @@
 # @Link    : http://example.org
 # @Version : $Id$
 
+from tqdm import tqdm
+from cadnano.document import Document
+from matplotlib import cm
+
 import numpy as np
 import cadnano
 import random
@@ -14,8 +18,8 @@ import argparse
 import utilities
 import math
 
-from tqdm import tqdm
-from cadnano.document import Document
+import matplotlib
+matplotlib.use('TkAgg')
 
 
 class Sequence:
@@ -35,7 +39,7 @@ class Sequence:
             # Get scaffold position
             scaffold_positions = self.origami.get_scaffold_positions(self.idNum, idx)
 
-             # Add new positions to list
+            # Add new positions to list
             self.scaffoldPos.extend(scaffold_positions)
 
 
@@ -68,7 +72,7 @@ class OligoBreakSolution:
         if self.breaks:
             tqdm.write('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" %
                        (current_break.key) for current_break in self.breaks]))
-            tqdm.write('Edge length/weight: '+'->'.join(['(%d / %.1f)' %
+            tqdm.write('Edge length/weight: '+'->'.join(['(%d / %.1e)' %
                        (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]))
 
     def reset_temp_neighbor_constraints(self):
@@ -171,7 +175,7 @@ class GroupBreaksolution:
         '''
         if self.break_solutions:
             tqdm.write('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
-                  (self.complete, self.total_score, self.total_penalty))
+                       (self.complete, self.total_score, self.total_penalty))
             # Print the solutions
             for oligo_key in self.break_solutions:
                 # Print solution for oligo
@@ -194,7 +198,7 @@ class GroupBreaksolution:
 
             # If the solution doesnt exist move to next break solution
             if not break_solution:
-                tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0],key[1],key[2]))
+                tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0], key[1], key[2]))
                 self.complete = False
                 continue
 
@@ -373,6 +377,7 @@ class OligoGroup:
         for group_solution in self.group_solutions:
             group_solution.print_solution()
 
+
 class Nucleotide:
     def __init__(self):
         '''
@@ -386,6 +391,7 @@ class Nucleotide:
 
         self.next_nucleotide     = None
         self.previous_nucleotide = None
+
 
 class Strand:
     def __init__(self):
@@ -404,7 +410,7 @@ class Strand:
         self.rev_breaks  = None    # Rev break locations along a strand
 
         # Break rule
-        self.break_rule = ['xstap','all3']
+        self.break_rule = ['xstap', 'all3']
         self.LONG_STRAND_LENGTH = 21
         self.LONG_STRAND_STEP   = 7
 
@@ -462,11 +468,11 @@ class Strand:
 
         # 7. Check if the rule is all2
         if 'all2' in self.break_rule:
-            self.fwd_breaks.extend(np.arange(1,int(self.length)-2))
-        
+            self.fwd_breaks.extend(np.arange(1, int(self.length)-2))
+
         # 8. Check if the rule is all3
         if 'all3' in self.break_rule:
-            self.fwd_breaks.extend(np.arange(2,int(self.length)-3))
+            self.fwd_breaks.extend(np.arange(2, int(self.length)-3))
 
         # Make the breaks array and sort them
         self.fwd_breaks = np.array(sorted(self.fwd_breaks), dtype=int)
@@ -593,7 +599,53 @@ class Oligo:
 
         # Assign the score
         self.initial_score = new_edge.edge_weight
-        self.Tm_score      = new_edge.edge_Tm
+        self.folding_prob  = new_edge.edge_prob
+        self.Tf            = new_edge.edge_Tf
+
+    def color_by_folding_prob(self, color_map='binary'):
+        '''
+        Color by the segments
+        '''
+
+        # Prepare the color map
+        cmap      = cm.get_cmap(color_map, 1000)
+
+        # Get color index
+        cmap_index = int(1000*self.folding_prob[0])
+
+        # Get RGB value
+        self.rgb = cmap(cmap_index)[:3]
+
+        # Get hex-color
+        self.hexcolor = matplotlib.colors.rgb2hex(self.rgb)
+
+        # Apply the color
+        self.cadnano_oligo.applyColor(self.hexcolor)
+
+    def color_by_Tf(self, color_map='binary', min_Tf=30, max_Tf=50):
+        '''
+        Color by the segments
+        '''
+
+        # Prepare the color map
+        cmap      = cm.get_cmap(color_map, max_Tf-min_Tf+1)
+
+        # Get color index
+        if self.Tf <= min_Tf:
+            cmap_index = 0
+        elif self.Tf >= max_Tf:
+            cmap_index = max_Tf - min_Tf
+        else:
+            cmap_index = int(self.Tf-min_Tf)
+
+        # Get RGB value
+        self.rgb = cmap(cmap_index)[:3]
+
+        # Get hex-color
+        self.hexcolor = matplotlib.colors.rgb2hex(self.rgb)
+
+        # Apply the color
+        self.cadnano_oligo.applyColor(self.hexcolor)
 
     def remove_penalized_solutions(self):
         '''
@@ -759,7 +811,7 @@ class Origami:
         self.idnums         = None
 
         # Structure parameter
-        self.num_crossovers = 0 
+        self.num_crossovers = 0
 
         # Keeps whether very long staples exist
         self.very_long_staples_exist      = True
@@ -788,7 +840,7 @@ class Origami:
                 vh        = current_strand.vh
                 idx5p     = current_strand.idx5p
                 idx3p     = current_strand.idx3p
-                
+
                 # Keep the positions
                 current_strand.scaffoldPos  = []
 
@@ -1508,7 +1560,7 @@ class Origami:
                     new_nucleotide.key = (new_nucleotide.vh, new_nucleotide.idx,
                                           new_nucleotide.direction)
                     new_nucleotide.dsDNA = self.is_dsDNA(new_nucleotide.vh,
-                                                        new_nucleotide.idx)
+                                                         new_nucleotide.idx)
                     # Assign new nucleotide
                     self.nucleotide_map[new_nucleotide.key] = new_nucleotide
 
@@ -1521,7 +1573,6 @@ class Origami:
 
                 # Update current strand
                 current_strand = current_strand.next_strand
-
 
     def generate_break_points(self):
         '''
@@ -2010,6 +2061,20 @@ class AutoBreak:
         # Verbose output
         self.verbose_output                 = False
 
+    def color_oligos_by_folding_prob(self):
+        '''
+        Color oligos by folding prob
+        '''
+        for oligo in self.origami.oligos['staple']:
+            oligo.color_by_folding_prob()
+
+    def color_oligos_by_Tf(self):
+        '''
+        Color oligos by folding prob
+        '''
+        for oligo in self.origami.oligos['staple']:
+            oligo.color_by_Tf()
+
     def preprocess_optim_params(self):
         '''
         Preprocess optimization parameters
@@ -2137,7 +2202,7 @@ class AutoBreak:
         Determine oligo scores from design
         '''
         # Make break-break graph
-        self.initialize()
+        self.origami.prepare_origami()
 
         # Determine initial scores
         self.determine_initial_scores()
@@ -2385,7 +2450,7 @@ class AutoBreak:
         '''
         Optimization function Tm
         '''
-        return edge.edge_Tm
+        return edge.edge_maxTm
 
     def _gauss_length(self, edge):
         '''
@@ -2400,7 +2465,7 @@ class AutoBreak:
         Optimization function gauss Tm
         '''
 
-        return np.exp(-(edge.edge_Tm-self.optim_params_dict['gTm'][0])**2/self.optim_params_dict['gTm'][1]**2)
+        return np.exp(-(edge.edge_maxTm-self.optim_params_dict['gTm'][0])**2/self.optim_params_dict['gTm'][1]**2)
 
     def _gauss_maxseq(self, edge):
         '''
@@ -2547,35 +2612,71 @@ class BreakEdge:
         # Determine Tm
         self.Tm_list       = np.array([utilities.sequence_to_Tm(dna) for dna in self.dsDNA_seq_list])
         
-        # Determine intrinsic free energies
-        self.dG_intrin_list = np.array([utilities.sequence_to_dG(dna) for dna in self.dsDNA_seq_list])
-        
+        # 1. Determine intrinsic free energies
+        self.dG_intrin_list = []
+        self.dH_intrin_list = []
+        self.dS_intrin_list = []
+
+        for dna in self.dsDNA_seq_list:
+            dG37intrin, dG50intrin, dHintrin, dSintrin = utilities.sequence_to_dG(dna)
+
+           # Add free energies to the lists
+            self.dG_intrin_list.append([dG37intrin,dG50intrin])
+            self.dH_intrin_list.append(dHintrin)
+            self.dS_intrin_list.append(dSintrin)
+
+        # Make the lists arrays
+        self.dG_intrin_list = np.array(self.dG_intrin_list)
+        self.dH_intrin_list = np.array(self.dH_intrin_list)
+        self.dS_intrin_list = np.array(self.dS_intrin_list)
+
         # Get scaffold length
         scaffold_length = self.origami.oligos['scaffold'][0].length
-        
-        # Determine interfacial coupling energies
-        self.dG_inter_list = np.array([utilities.position_to_loop_dG(self.dsDNA_mean_pos_list[i],
-                                      self.dsDNA_mean_pos_list[i+1], scaffold_length)
-                                      for i in range(len(self.dsDNA_mean_pos_list)-1)])
 
-        # Get total energy
-        self.dG_total = np.sum(self.dG_intrin_list,axis=0)+np.sum(self.dG_inter_list,axis=0)
+        # 2. Determine interfacial coupling energies
+        self.dG_inter_list = []
+        self.dS_inter_list = []
+
+        for i in range(len(self.dsDNA_mean_pos_list)-1):
+            dG37inter, dG50inter, dSinter = utilities.position_to_loop_dG(self.dsDNA_mean_pos_list[i],
+                                                                          self.dsDNA_mean_pos_list[i+1],
+                                                                          scaffold_length)
+            self.dG_inter_list.append([dG37inter, dG50inter])
+            self.dS_inter_list.append(dSinter)
+
+        # Make the lists arrays
+        self.dG_inter_list = np.array(self.dG_inter_list)
+        self.dS_inter_list = np.array(self.dS_inter_list)
+
+        # 3. Get free energy due to concentration
+        dG37conc,dG50conc,dSconc = utilities.conc_to_dG()
+        
+        self.dG_conc = np.array([dG37conc, dG50conc])
+        self.dS_conc = dSconc
 
         # Get RT values
-        RT = 0.593/298.15*np.array([310.15,333.15])
+        self.RT = 0.593/298.15*np.array([310.15,323.15])
+
+        # 4. Get total energies
+        self.dG_total = np.sum(self.dG_intrin_list,axis=0) + np.sum(self.dG_inter_list,axis=0) + self.dG_conc
+        self.dS_total = np.sum(self.dS_intrin_list) + np.sum(self.dS_inter_list) + self.dS_conc
+        self.dH_total = np.sum(self.dH_intrin_list)
+
+        # 5. Determine probabilities
+        self.edge_prob = np.exp(-self.dG_total/self.RT)/(1.0+np.exp(-self.dG_total/self.RT))
         
-        # Determine probabilities
-        self.edge_prob = np.exp(-self.dG_total/RT)/(1.0+np.exp(-self.dG_total/RT))
-        
-        # Determine log-probabilities
+        # 6. Determine log-probabilities
         self.edge_logprob = np.log(self.edge_prob)
+
+        # 7. Determine Tf in Celcius
+        self.edge_Tf = self.dH_total/self.dS_total - 273.15
 
         # Determine lengths
         self.ssDNA_length_list = np.array([len(dna) for dna in self.ssDNA_seq_list])
         self.dsDNA_length_list = np.array([len(dna) for dna in self.dsDNA_seq_list])
 
         # Determine the edge weights
-        self.edge_Tm     = max(self.Tm_list)
+        self.edge_maxTm  = max(self.Tm_list)
 
         # Length parameters
         self.edge_maxseq = max(self.dsDNA_length_list)
@@ -2871,7 +2972,6 @@ class BreakNode:
 
                 # If new score is higher than the previous one, make a new list
                 if new_score > break_edge.next_break.score:
-
                     break_edge.next_break.best_path_node  = new_break_path
                     break_edge.next_break.best_path_nodes = new_break.best_path_nodes + [new_break]
                     break_edge.next_break.score           = new_score
@@ -3063,7 +3163,7 @@ def main():
                         help="Sequence file in txt")
 
     parser.add_argument("-nsol",   "--nsol",     type=int,
-                        help="Number of solutions", default=1)
+                        help="Number of solutions", default=10)
 
     parser.add_argument("-v",   "--verbose",  action='store_true',
                         help="Verbose output")
@@ -3148,14 +3248,16 @@ def main():
     new_origami.cluster_oligo_groups()
 
     # Check if it is a read-only or autobreak run
-    if read_only:
-        # Read only the scores
-        new_autobreak.determine_oligo_scores()
-    else:
+    if not read_only:
         # Run autobreak
         new_autobreak.run_autobreak()
+    
+    # Read only the scores
+    new_autobreak.determine_oligo_scores()
 
-    # Get oligos to color based on Tm
+    # Color oligos by folding prob
+    new_autobreak.color_oligos_by_Tf()
+
     # Write result to json
     new_autobreak.write_final_part_to_json()
 
