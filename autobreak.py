@@ -962,6 +962,9 @@ class Origami:
         # Read sequence file
         self.read_sequence()
 
+        # Apply sequence
+        self.apply_sequence()
+
         # Read scaffolds
         self.read_scaffolds()
 
@@ -1933,15 +1936,15 @@ class Origami:
 
             # Convert to upper case
             self.scaffold_sequence = self.scaffold_sequence.upper()
+        elif len(self.scaffolds) > 0:
+            self.scaffold_sequence = utilities.generate_random_sequence(self.scaffolds[0].length())
 
-            # Apply sequence to scaffolds
-            for scaffold in self.scaffolds:
-                scaffold.applySequence(self.scaffold_sequence)
-        else:
-            # Assign random sequence
-            for scaffold in self.scaffolds:
-                self.scaffold_sequence = utilities.generate_random_sequence(scaffold.length())
-                scaffold.applySequence(self.scaffold_sequence)
+    def apply_sequence(self, start_position=None):
+        '''
+        Apply sequence to scaffold
+        '''
+        if len(self.scaffolds) > 0:
+            self.scaffolds[0].applySequence(self.scaffold_sequence)
 
     def get_coordinates(self, vh, index):
         '''
@@ -2631,7 +2634,8 @@ class BreakEdge:
         self.dS_intrin_list = np.array(self.dS_intrin_list)
 
         # Get scaffold length
-        scaffold_length = self.origami.oligos['scaffold'][0].length
+        scaffold_length   = self.origami.oligos['scaffold'][0].length
+        scaffold_circular = self.origami.oligos['scaffold'][0].circular
 
         # 2. Determine interfacial coupling energies
         self.dG_inter_list = []
@@ -2640,7 +2644,7 @@ class BreakEdge:
         for i in range(len(self.dsDNA_mean_pos_list)-1):
             dG37inter, dG50inter, dSinter = utilities.position_to_loop_dG(self.dsDNA_mean_pos_list[i],
                                                                           self.dsDNA_mean_pos_list[i+1],
-                                                                          scaffold_length)
+                                                                          scaffold_length, scaffold_circular)
             self.dG_inter_list.append([dG37inter, dG50inter])
             self.dS_inter_list.append(dSinter)
 

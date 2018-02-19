@@ -98,14 +98,16 @@ def generate_nC(oligo_length):
     '''
     return 'C'*int(oligo_length)
 
-def get_min_distance(from_position, to_position, oligo_length):
+def get_min_distance(from_position, to_position, oligo_length, oligo_circular = True):
     '''
     Get min distance between two positions on a circular oligo
     '''
     first_distance  = (to_position - from_position) % oligo_length 
     second_distance = oligo_length - first_distance
-
-    return min(first_distance, second_distance) 
+    if oligo_circular:
+        return min(first_distance, second_distance)
+    else:
+        return abs(to_position - from_position)
 
 def end_to_end_distance(num_bases):
     '''
@@ -138,9 +140,9 @@ def distance_to_loop_dG(distance_square):
 
     return (dG37, dG50, dSloop)
 
-def position_to_loop_dG(from_position, to_position, oligo_length):
+def position_to_loop_dG(from_position, to_position, oligo_length, oligo_circular=True):
     # Get number of minimum number of bases between to location
-    base_distance   = get_min_distance(from_position, to_position, oligo_length)
+    base_distance   = get_min_distance(from_position, to_position, oligo_length, oligo_circular)
 
     #Determine end to end distance^2
     distance_square = end_to_end_distance(base_distance)
