@@ -126,7 +126,7 @@ def end_to_end_distance(num_bases):
     return 2*L_p*L_contour*(1-1.0*L_p/L_contour*(1-np.exp(-1.0*L_contour/L_p)))
 
 
-def distance_to_loop_dG(distance_square):
+def distance_to_loop_dG(distance_square, temperature_kelvin=323.15):
     '''
     Calculate loop entropy
     distance square is in nm2
@@ -135,12 +135,12 @@ def distance_to_loop_dG(distance_square):
     # Divide by 1000 to convert cal/(mol.K) to kcal/(mol.K)
     effective_concentration = 1.0/6.02E23*(3.0/(2*np.pi*distance_square*1E-18))**(3/2.0)/1000
     dSloop = R*np.log(effective_concentration)
-    dG37   = -310.15*dSloop
-    dG50   = -323.15*dSloop
+    dGloop = -temperature_kelvin*dSloop
 
-    return (dG37, dG50, dSloop)
+    return (dGloop, dSloop)
 
-def position_to_loop_dG(from_position, to_position, oligo_length, oligo_circular=True):
+def position_to_loop_dG(from_position, to_position, oligo_length, oligo_circular=True, 
+                        temperature_kelvin=323.15):
     # Get number of minimum number of bases between to location
     base_distance   = get_min_distance(from_position, to_position, oligo_length, oligo_circular)
 
@@ -148,7 +148,7 @@ def position_to_loop_dG(from_position, to_position, oligo_length, oligo_circular
     distance_square = end_to_end_distance(base_distance)
 
     # Get the free energies
-    energies = distance_to_loop_dG(distance_square)
+    energies = distance_to_loop_dG(distance_square, temperature_kelvin)
 
     return energies
 
@@ -203,15 +203,14 @@ def sequence_to_Tm(sequence):
 
     return Tm_Mg
 
-def conc_to_dG():
+def conc_to_dG(temperature_kelvin):
     # Entropy factor due to concenteration
     dSconc = R*np.log(STAP_CONC-0.5*SCAF_CONC)
-    dG37 = -310.15*dSconc
-    dG50 = -323.15*dSconc
+    dGconc = -temperature_kelvin*dSconc
 
-    return (dG37, dG50, dSconc)
+    return (dGconc, dSconc)
 
-def sequence_to_dG(sequence):
+def sequence_to_dG(sequence, temperature_kelvin):
     '''
     Convert sequence to dG
     '''
@@ -239,8 +238,7 @@ def sequence_to_dG(sequence):
     # Get total entropy
     dStotal = (dSbase + dSsalt)/1000.0
 
-    # Determine dG at two temperatures
-    dG37 = dHtotal - 310.15*dStotal
-    dG50 = dHtotal - 323.15*dStotal
+    # Determine dG at the temperature specified
+    dGtotal = dHtotal - temperature_kelvin*dStotal
 
-    return (dG37, dG50, dHtotal, dStotal)
+    return (dGtotal, dHtotal, dStotal)

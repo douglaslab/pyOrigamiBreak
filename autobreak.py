@@ -288,7 +288,7 @@ class OligoGroup:
         '''
         Sort oligos by length
         '''
-        self.oligos.sort(key=lambda x: x.length)
+        self.oligos.sort(key=lambda x: x.length, reverse=True)
 
     def reset_temp_neighbor_constraints(self):
         '''
@@ -609,8 +609,11 @@ class Oligo:
         # Create break
         new_edge = BreakEdge()
 
-        # Assign
+        # Assign origami
         new_edge.origami = self.origami
+
+        # Assign autobreak
+        new_edge.autobreak = self.origami.autobreak
 
         # Make the connection
         if self.circular:
@@ -1448,6 +1451,9 @@ class Origami:
                         new_sequence.strHigh = (current_strand.direction*(new_sequence.idx3p - current_strand.idx5p) +
                                                 current_strand.get_inserts(new_sequence.idx3p, current_strand.idx5p))
 
+                        # Assign scaffold positions
+                        new_sequence.scaffoldPos = []
+                        
                         # Get the total length for the sequence
                         new_sequence.totalLength = new_sequence.strHigh - new_sequence.strLow + 1
 
@@ -1505,6 +1511,9 @@ class Origami:
                                             current_strand.get_inserts(new_sequence.idx5p, current_strand.idx5p))
                     new_sequence.strHigh = (current_strand.direction*(new_sequence.idx3p - current_strand.idx5p) +
                                             current_strand.get_inserts(new_sequence.idx3p, current_strand.idx5p))
+
+                    # Assign scaffold positions
+                    new_sequence.scaffoldPos = []
 
                     # Get the total length for the sequence
                     new_sequence.totalLength = new_sequence.strHigh - new_sequence.strLow + 1
@@ -2109,7 +2118,7 @@ class AutoBreak:
         self.output_directory                = '.'
 
         # Optimization function
-        self.optim_args                      = [['dG']]
+        self.optim_args                      = [['dG:50']]
 
         # Maxseq parameter
         self.optim_maxseq_length             = 14
@@ -2121,6 +2130,10 @@ class AutoBreak:
         # Tm gaussian parameters
         self.optim_Tm_mean                   = 60
         self.optim_Tm_tolerance              = 5
+
+        # Temperature parameters for dG optimization
+        self.optim_temperature_celcius       = 50
+        self.optim_temperature_kelvin        = self.optim_temperature_celcius+273.15
 
         # Max sequence gaussian parameters
         self.optim_maxseq_mean               = 14
@@ -2147,7 +2160,7 @@ class AutoBreak:
         self.optim_params_dict              = {'14': [],
                                                '16': [],
                                                'Tm': [],
-                                               'dG': [],
+                                               'dG': [self.optim_temperature_celcius],
                                                'structure': [self.optim_structure_factor],
                                                'length': [],
                                                'maxseq': [self.optim_maxseq_length],
@@ -2167,6 +2180,13 @@ class AutoBreak:
 
         # Permutation parameter
         self.permute_sequence               = False
+
+    def set_temperature_parameter(self):
+        '''
+        Set temperature parameters
+        '''
+        self.optim_temperature_celcius = self.optim_params_dict['dG'][0]
+        self.optim_temperature_kelvin  = self.optim_temperature_celcius + 273.15
 
     def set_permute_sequence(self, permute=False):
         '''
@@ -2196,10 +2216,19 @@ class AutoBreak:
         RULE1. If there is no cross in break rule,
                make oligo solution and global solution number 1
                since Optimization yields the best result
+        
+        RUL2. If oligos are not shuffled, make num oligo solutions 
+              and global solutions 1
+
         '''
 
         # RULE 1
         if 'xscaf' not in self.break_rule and 'xstap' not in self.break_rule:
+            self.NUM_OLIGO_SOLUTIONS  = 1
+            self.NUM_GLOBAL_SOLUTIONS = 1
+
+        # RULE 2
+        if not self.optim_shuffle_oligos:
             self.NUM_OLIGO_SOLUTIONS  = 1
             self.NUM_GLOBAL_SOLUTIONS = 1
 
@@ -2413,6 +2442,9 @@ class AutoBreak:
                         # Assign origami
                         new_edge.origami = self.origami
 
+                        # Assign autobreak
+                        new_edge.autobreak = self
+
                         # Assign edge length
                         new_edge.edge_length = break_distance
 
@@ -2594,7 +2626,7 @@ class AutoBreak:
         '''
         Optimization function dG
         '''
-        return edge.edge_logprob[1]
+        return edge.edge_logprob
 
     def _optimize_14(self, edge):
         '''
@@ -2655,6 +2687,7 @@ class BreakEdge:
         '''
         Break edge class
         '''
+        self.autobreak     = None
         self.origami       = None
         self.current_break = None
         self.next_break    = None
@@ -2713,6 +2746,9 @@ class BreakEdge:
         Update edge weights
         '''
 
+        # Get the temperature parameter for dG optimization
+        temperature_kelvin = self.autobreak.optim_temperature_kelvin
+
         # Initialize sequence and dna list
         self.sequence_list  = []
         
@@ -2768,6 +2804,7 @@ class BreakEdge:
             
             # 2. Get the sequences in between
             for sequence in self.sequence_list[1:-1]:
+                print(sequence.idNum, sequence.idx5p)
                 self.ssDNA_pos_list.append(sequence.scaffoldPos)
                 self.ssDNA_seq_list.append(sequence.dna)
 
@@ -2801,10 +2838,12 @@ class BreakEdge:
         self.dS_intrin_list = []
 
         for dna in self.dsDNA_seq_list:
-            dG37intrin, dG50intrin, dHintrin, dSintrin = utilities.sequence_to_dG(dna)
+            (dGintrin,
+             dHintrin,
+             dSintrin) = utilities.sequence_to_dG(dna, temperature_kelvin)
 
            # Add free energies to the lists
-            self.dG_intrin_list.append([dG37intrin,dG50intrin])
+            self.dG_intrin_list.append(dGintrin)
             self.dH_intrin_list.append(dHintrin)
             self.dS_intrin_list.append(dSintrin)
 
@@ -2822,10 +2861,11 @@ class BreakEdge:
         self.dS_inter_list = []
 
         for i in range(len(self.dsDNA_mean_pos_list)-1):
-            dG37inter, dG50inter, dSinter = utilities.position_to_loop_dG(self.dsDNA_mean_pos_list[i],
-                                                                          self.dsDNA_mean_pos_list[i+1],
-                                                                          scaffold_length, scaffold_circular)
-            self.dG_inter_list.append([dG37inter, dG50inter])
+            dGinter, dSinter = utilities.position_to_loop_dG(self.dsDNA_mean_pos_list[i],
+                                                             self.dsDNA_mean_pos_list[i+1],
+                                                             scaffold_length, scaffold_circular,
+                                                             temperature_kelvin)
+            self.dG_inter_list.append(dGinter)
             self.dS_inter_list.append(dSinter)
 
         # Make the lists arrays
@@ -2833,16 +2873,16 @@ class BreakEdge:
         self.dS_inter_list = np.array(self.dS_inter_list)
 
         # 3. Get free energy due to concentration
-        dG37conc,dG50conc,dSconc = utilities.conc_to_dG()
+        dGconc,dSconc = utilities.conc_to_dG(temperature_kelvin)
         
-        self.dG_conc = np.array([dG37conc, dG50conc])
+        self.dG_conc = dGconc
         self.dS_conc = dSconc
 
         # Get RT values
-        self.RT = 0.593/298.15*np.array([310.15,323.15])
+        self.RT = 0.593/298.15*temperature_kelvin
 
         # 4. Get total energies
-        self.dG_total = np.sum(self.dG_intrin_list,axis=0) + np.sum(self.dG_inter_list,axis=0) + self.dG_conc
+        self.dG_total = np.sum(self.dG_intrin_list) + np.sum(self.dG_inter_list) + self.dG_conc
         self.dS_total = np.sum(self.dS_intrin_list) + np.sum(self.dS_inter_list) + self.dS_conc
         self.dH_total = np.sum(self.dH_intrin_list)
 
@@ -3342,7 +3382,7 @@ def main():
     parser.add_argument("-score",   "--score",     type=str, default='sum',
                         help="Optimization score function")
 
-    parser.add_argument("-func",   "--func",     type=str, default='dG',
+    parser.add_argument("-func",   "--func",     type=str, default='dG:50',
                         help="Optimization function")
 
     parser.add_argument("-out",   "--output",   type=str, default='.',
@@ -3353,6 +3393,9 @@ def main():
 
     parser.add_argument("-pos",   "--position", type=str, default=None,
                         help="Sequence start position")
+
+    parser.add_argument("-sort", "--sort", action='store_true',
+                        help="Sort oligos for stepwise optimization.")
 
     parser.add_argument("-nsol",   "--nsol",     type=int,
                         help="Number of solutions", default=5)
@@ -3385,6 +3428,7 @@ def main():
     verbose_output          = args.verbose
     random_seed             = args.seed
     permute_sequence        = args.permute
+    shuffle_oligos          = not args.sort
 
     # Check sequence start position
     if args.position:
@@ -3432,11 +3476,17 @@ def main():
     # Set permute sequence
     new_autobreak.set_permute_sequence(permute_sequence)
 
+    # Set oligo shuffle parameter
+    new_autobreak.set_oligo_shuffle_parameter(shuffle_oligos)
+
     # Preprocess optimization parameters
     new_autobreak.preprocess_optim_params()
 
     # Set verbose parameter
     new_autobreak.set_verbose_output(verbose_output)
+
+    # Set optimization temperature
+    new_autobreak.set_temperature_parameter()
 
     # Initialize origami object
     new_origami.initialize(input_filename)
