@@ -18,6 +18,7 @@ import sys
 import argparse
 import utilities
 import math
+import glob
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -259,6 +260,11 @@ class CompleteBreakSolution:
                 self.complete      *= self.group_solutions[key].complete
             else:
                 self.complete       = False
+
+    def export_staples(self, filename):
+        '''
+        Export the staples and its scores into an excel file
+        '''
 
 class OligoGroup:
     def __init__(self):
@@ -2181,6 +2187,10 @@ class AutoBreak:
         # Permutation parameter
         self.permute_sequence               = False
 
+    def write_results(self):
+        '''
+        '''
+
     def set_temperature_parameter(self):
         '''
         Set temperature parameters
@@ -2232,11 +2242,40 @@ class AutoBreak:
             self.NUM_OLIGO_SOLUTIONS  = 1
             self.NUM_GLOBAL_SOLUTIONS = 1
 
-    def set_output_directory(self, output_directory):
+    def set_output_directory(self, input_filename):
         '''
         Set output directory
         '''
-        self.output_directory = output_directory
+        # Split input file
+        head, tail       = os.path.split(input_filename)
+        root, ext        = os.path.splitext(tail)
+
+        # List existing output directories
+        potential_directories = list(filter(lambda x:os.path.isdir(x), glob.glob(root+'_[0-9][0-9][0-9]')))
+
+        # Get the number extensions
+        number_extensions = [int(x[-3:]) for x in potential_directories]
+
+        # Get the counter
+        output_counter = 1
+        if len(number_extensions) > 0:
+            output_counter = max(number_extensions)+1
+
+        self.output_directory = root+"_%03d" % (output_counter)
+
+        # Make directory
+        os.mkdir(self.output_directory)
+
+    def write_input_args(self):
+        '''
+        Write input arguments in a txt file
+        '''
+        self.args_file = self.output_directory+'/args.txt'
+        f = open(self.args_file, 'w')
+        for key in self.args_dict:
+            f.write('%-8s: %-8s\n' % (key, self.args_dict[key]))
+
+        f.close()
 
     def define_json_output(self):
         '''
@@ -2278,7 +2317,7 @@ class AutoBreak:
         '''
         self.optim_pick_method = pick_method
 
-    def set_maximum_breaks(self, maximum_num_breaks=70):
+    def set_maximum_breaks(self, maximum_num_breaks=100000):
         '''
         Set maximum number of breaks parameter
         '''
@@ -2804,7 +2843,6 @@ class BreakEdge:
             
             # 2. Get the sequences in between
             for sequence in self.sequence_list[1:-1]:
-                print(sequence.idNum, sequence.idx5p)
                 self.ssDNA_pos_list.append(sequence.scaffoldPos)
                 self.ssDNA_seq_list.append(sequence.dna)
 
@@ -3385,9 +3423,6 @@ def main():
     parser.add_argument("-func",   "--func",     type=str, default='dG:50',
                         help="Optimization function")
 
-    parser.add_argument("-out",   "--output",   type=str, default='.',
-                        help="Output directory")
-
     parser.add_argument("-seq",   "--sequence", type=str, default=None,
                         help="Sequence file in txt")
 
@@ -3418,7 +3453,6 @@ def main():
 
     # Assign the parameters
     input_filename          = args.input
-    output_directory        = args.output
     sequence_filename       = args.sequence
     read_only               = args.read
     break_rule              = parse_break_rule(args.rule)
@@ -3429,6 +3463,19 @@ def main():
     random_seed             = args.seed
     permute_sequence        = args.permute
     shuffle_oligos          = not args.sort
+
+    # Create args dictionary
+    args_dict = {'input': args.input,
+                 'sequence': args.sequence,
+                 'read': args.read,
+                 'rule': args.rule,
+                 'score': args.score,
+                 'func': args.func,
+                 'nsol': args.nsol,
+                 'verbose': args.verbose,
+                 'seed': args.seed,
+                 'permute': args.permute,
+                 'sort': args.sort}
 
     # Check sequence start position
     if args.position:
@@ -3441,10 +3488,6 @@ def main():
     if not os.path.isfile(input_filename):
         sys.exit('Input file does not exist!')
 
-    # Check if output directory exists
-    if not os.path.isdir(output_directory):
-        sys.exit('Output directory does not exist!')
-
     # Set random seed in order to get the same results with the same set of parameters
     random.seed(random_seed)
 
@@ -3454,15 +3497,15 @@ def main():
     # Create Autobreak object and make cross assignments
     new_autobreak = AutoBreak()
 
+    # Store args
+    new_autobreak.args_dict = args_dict
+
     # Cross assignments
     new_origami.autobreak = new_autobreak
     new_autobreak.origami = new_origami
 
     # Assign break rule
     new_autobreak.set_break_rule(break_rule)
-
-    # Set output directory
-    new_autobreak.set_output_directory(output_directory)
 
     # Set solution numbers
     new_autobreak.set_solution_nums(1, global_solutions)
@@ -3485,6 +3528,9 @@ def main():
     # Set verbose parameter
     new_autobreak.set_verbose_output(verbose_output)
 
+    # Set output directory
+    new_autobreak.set_output_directory(input_filename)
+
     # Set optimization temperature
     new_autobreak.set_temperature_parameter()
 
@@ -3502,6 +3548,9 @@ def main():
 
     # Define json output
     new_autobreak.define_json_output()
+
+    # Write input arguments
+    new_autobreak.write_input_args()
 
     # Cluster staples
     new_origami.cluster_oligo_groups()
