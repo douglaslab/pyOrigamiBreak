@@ -19,6 +19,8 @@ import argparse
 import utilities
 import math
 import glob
+import pandas
+import openpyxl
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -48,6 +50,40 @@ class Sequence:
 class OligoBreakSolution:
     def __init__(self):
         self.breaks = None
+        self.edges  = None
+
+    def get_cvs_rows(self):
+        '''
+        Prepare cvs writer object
+        
+        COLUMNS
+        1.  Oligo key
+        2.  Oligo Group key
+        3.  Break 1 key
+        4.  Break 1 type
+        5.  Break 2 key
+        6.  Break 2 type
+        7.  Length
+        8.  Sequence
+        9.  Edge weight
+        10.  ProbFolding
+        11.  Log-Probfolding
+        12.  Tf
+        13. maxTm
+        14. maxSeq
+        15. has14
+        16. dGtotal
+        17. dGintrin
+        18. dGloop
+        19. dGconc
+        '''
+
+        # Initialize rows
+        cvs_writer_rows = []
+        for edge in self.edges[:-1]:
+            cvs_writer_rows.append(edge.get_cvs_row_object())
+
+        return cvs_writer_rows
 
     def break_oligo_solution(self):
         '''
@@ -156,6 +192,21 @@ class GroupBreaksolution:
         self.total_penalty   = 0
         self.complete        = True
 
+    def get_cvs_rows(self):
+        cvs_writer_rows = []
+        for key in self.break_solutions:
+            # Get break solution
+            break_solution    = self.break_solutions[key]
+
+            # If the solution doesnt exist move to next break solution
+            if not break_solution:
+                continue
+            
+            # Extend the list with the row objects
+            cvs_writer_rows.extend(break_solution.get_cvs_rows())
+
+        return cvs_writer_rows
+
     def break_group_solution(self):
         '''
         Break group solution
@@ -238,16 +289,66 @@ class CompleteBreakSolution:
 
     def __init__(self):
 
-        self.group_solutions = {}
-        self.total_score     = 0
-        self.total_penalty   = 0
-        self.sequence_offset = 0
-        self.complete        = True
+        self.temperature_celcius = None
+        self.group_solutions     = {}
+        self.total_prob          = 0
+        self.total_score         = 0
+        self.total_penalty       = 0
+        self.sequence_offset     = 0
+        self.complete            = True
+        self.cvs_writer_rows     = []
+
+        '''
+        COLUMNS
+        1.  Oligo key
+        2.  Oligo Group key
+        3.  Break 1 key
+        4.  Break 1 type
+        5.  Break 1 location
+        5.  Break 2 key
+        6.  Break 2 type
+        7.  Break 2 location
+        8.  Length
+        9.  Sequence
+        10. Edge weight
+        11. ProbFolding
+        12. Log-Probfolding
+        13. Tf
+        14. maxTm
+        15. maxSeq
+        16. has14
+        17. dGtotal
+        18. dGintrin
+        19. dGloop
+        20. dGconc
+        '''
+        self.cvs_header = ['OligoKey',
+                           'OligoGroupkey',
+                           'StartBreakKey',
+                           'StartBreakType',
+                           'StartBreakLocation',
+                           'EndBreakKey',
+                           'EndBreakType',
+                           'EndBreakLocation',
+                           'Length',
+                           'Sequence',
+                           'EdgeWeight',
+                           'ProbFold',
+                           'LogProbFold',
+                           'Tf',
+                           'maxTm',
+                           'maxSeqLength',
+                           'Has14',
+                           'dGtotal',
+                           'dGintrin',
+                           'dGLoop',
+                           'dGconc']
 
     def calculate_total_score(self):
         '''
         Calculate total score for the best solutions
         '''
+        self.total_prob    = 1.0
         self.total_score   = 0
         self.total_penalty = 0
         self.complete      = True
@@ -255,16 +356,66 @@ class CompleteBreakSolution:
         for key in self.group_solutions:
             # Break group solution
             if self.group_solutions[key]:
+                self.total_prob    *= np.exp(self.group_solutions[key].total_score)
                 self.total_score   += self.group_solutions[key].total_score
                 self.total_penalty += self.group_solutions[key].total_penalty
                 self.complete      *= self.group_solutions[key].complete
             else:
                 self.complete       = False
 
+    def get_cvs_rows(self):
+        '''
+        Get cvs writer rows
+        '''
+        cvs_writer_rows = []
+        for key in self.group_solutions:
+            # Check if the solution exists
+            if self.group_solutions[key]:
+                cvs_writer_rows.extend(self.group_solutions[key].get_cvs_rows())
+
+        return cvs_writer_rows
+
+    def get_summary_rows(self):
+        '''
+        Get summary rows
+        '''
+        summary_rows = [['Temperature', self.temperature_celcius],
+                        ['TotalProb', self.total_prob],
+                        ['TotalScore', self.total_score],
+                        ['TotalPenalty', self.total_penalty],
+                        ['Complete', int(self.complete)],
+                        ['SequenceOffset',self.sequence_offset]]
+
+        return summary_rows
+
     def export_staples(self, filename):
         '''
         Export the staples and its scores into an excel file
         '''
+
+        # Load workbook
+        book = openpyxl.load_workbook(filename)
+        writer      = pandas.ExcelWriter(filename, engine = 'openpyxl')
+        writer.book = book
+        
+        # Assign sheet number
+        sheet_number = self.sequence_offset
+
+        # Create data frames
+        summary_frame = pandas.DataFrame(np.array(self.get_summary_rows()))
+
+        # Create staples frames
+        staples_frame  = pandas.DataFrame(np.array(self.get_cvs_rows()))
+
+        # Write summary data
+        summary_frame.to_excel(writer, sheet_name = str(sheet_number), header=None, index=False)
+
+        # Write staples data
+        staples_frame.to_excel(writer, sheet_name = str(sheet_number), header=self.cvs_header, index=False, startrow=10)
+
+         # Save writer and close
+        writer.save()
+        writer.close()
 
 class OligoGroup:
     def __init__(self):
@@ -902,6 +1053,14 @@ class Origami:
 
                 # Update current strand
                 current_strand = current_strand.next_strand
+
+    def set_dont_break_oligos(self, maximum_length=0):
+        '''
+        Set dont break oligos
+        '''
+        for oligo in self.oligos['staple']:
+            if oligo.length < maximum_length:
+                oligo.dont_break = True
 
     def set_sequence_offset(self, key):
         '''
@@ -2187,9 +2346,73 @@ class AutoBreak:
         # Permutation parameter
         self.permute_sequence               = False
 
-    def write_results(self):
+        # Excel file that stores the results
+        self.results_excel_file             = None
+        self.autobreak_excel_file           = None
+        self.summary_excel_file             = None
+
+    def get_results_summary(self):
         '''
+        Get results summary
         '''
+        self.results_summary = []
+
+        # Print the scores
+        for complete_solution in self.sorted_complete_solutions:
+            self.results_summary.append([complete_solution.sequence_offset,
+                                         complete_solution.total_prob,
+                                         complete_solution.total_score,
+                                         complete_solution.total_penalty])
+
+        return self.results_summary
+
+    def write_results_summary(self):
+        '''
+        Write results summary
+        '''
+
+        # Create writer
+        writer      = pandas.ExcelWriter(self.summary_excel_file, engine = 'openpyxl')
+
+        # Create data frames
+        summary_frame  = pandas.DataFrame(np.array(self.get_results_summary()))
+
+        # Create summary header
+        summary_header = ['SequenceOffset','TotalProb', 'TotalScore','TotalPenalty'] 
+
+        # Write summary data
+        summary_frame.to_excel(writer, sheet_name = 'summary', header=summary_header, index=False)
+
+         # Save writer and close
+        writer.save()
+        writer.close()
+
+    def write_results(self, sequence_offset=0):
+        '''
+        Write Solution results to a sheet in results excel file
+        '''
+        if sequence_offset in self.complete_solutions:
+            self.complete_solutions[sequence_offset].export_staples(self.results_excel_file)
+
+    def write_best_result(self):
+        '''
+        Write best result
+        '''
+        if not self.write_all_results:
+            self.best_complete_solution.export_staples(self.results_excel_file)
+
+    def create_results_excel_file(self):
+        '''
+        Create resuls excel file
+        '''
+        wb = openpyxl.Workbook()
+        wb.save(self.results_excel_file)
+
+    def set_write_all_results(self, write_all_results=False):
+        '''
+        Set write all results
+        '''
+        self.write_all_results = write_all_results
 
     def set_temperature_parameter(self):
         '''
@@ -2277,7 +2500,7 @@ class AutoBreak:
 
         f.close()
 
-    def define_json_output(self):
+    def define_output_files(self):
         '''
         Define json output
         '''
@@ -2291,6 +2514,11 @@ class AutoBreak:
 
         self.json_legacy_output = self.output_directory+'/'+root+'_autobreak_legacy.json'
         self.json_cn25_output   = self.output_directory+'/'+root+'_autobreak_cn25.json'
+
+        # Results excel file
+        self.results_excel_file   = self.output_directory+'/'+root+'.xlsx'
+        self.autobreak_excel_file = self.output_directory+'/'+root+'_autobreak.xlsx'
+        self.summary_excel_file   = self.output_directory+'/'+root+'_summary.xlsx'
 
     def write_part_to_json(self, filename, legacy_option=True):
         '''
@@ -2382,8 +2610,13 @@ class AutoBreak:
                            dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}'):
             # Shift the sequence to the offset
             self.shift_scaffold_sequence(offset)
+
             # Run autobreak
             self.run_autobreak()
+
+            # Write results
+            if self.write_all_results:
+                self.write_results(offset)
 
     def run_autobreak(self):
         '''
@@ -2582,8 +2815,9 @@ class AutoBreak:
         # Print the scores
         for complete_solution in self.sorted_complete_solutions:
             # Print total score and crossover penalty for the best solution
-            tqdm.write('Complete solutions: Offset: %-5d - TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
-                       (complete_solution.sequence_offset, complete_solution.total_score, complete_solution.total_penalty))
+            tqdm.write('Complete solutions: Offset: %-5d - TotalProb:%-5.2f - TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
+                       (complete_solution.sequence_offset, complete_solution.total_prob,
+                        complete_solution.total_score, complete_solution.total_penalty))
 
         # Assign best solution
         if len(self.sorted_complete_solutions) > 0:
@@ -2754,6 +2988,59 @@ class BreakEdge:
 
         # Loop parameter
         self.isloop        = False
+
+    def get_cvs_row_object(self):
+        '''
+        Return cvs row object
+
+        COLUMNS
+        1.  Oligo key
+        2.  Oligo Group key
+        3.  Break 1 key
+        4.  Break 1 type
+        5.  Break 1 location
+        6.  Break 2 key
+        7.  Break 2 type
+        8.  Break 2 location
+        9.  Length
+        10.  Sequence
+        11.  Edge weight
+        12.  ProbFolding
+        13.  Log-Probfolding
+        14.  Tf
+        15. maxTm
+        16. maxSeq
+        17. has14
+        18. dGtotal
+        19. dGintrin
+        20. dGloop
+        21. dGconc
+
+        '''
+
+        cvs_row =      ['.'.join([str(x) for x in self.current_break.oligo.key]),
+                        self.current_break.oligo_group.key,
+                        '.'.join([str(x) for x in self.current_break.key]),
+                        self.current_break.type,
+                        self.current_break.location,
+                        '.'.join([str(x) for x in self.next_break.key]),
+                        self.next_break.type,
+                        self.next_break.location,
+                        self.edge_length,
+                        ''.join([str(x) for x in self.dsDNA_seq_list]),
+                        self.edge_weight,
+                        self.edge_prob,
+                        self.edge_logprob,
+                        self.edge_Tf,
+                        self.edge_Tm,
+                        self.edge_maxseq,
+                        int(self.edge_has14),
+                        self.dG_total,
+                        np.sum(self.dG_intrin_list),
+                        np.sum(self.dG_inter_list),
+                        self.dG_conc]
+
+        return cvs_row
 
     def set_edge_weight(self):
         '''
@@ -3435,11 +3722,17 @@ def main():
     parser.add_argument("-nsol",   "--nsol",     type=int,
                         help="Number of solutions", default=5)
 
+    parser.add_argument("-dontb",   "--dontbreak",  type=int,
+                        help="Dont break oligos less than the length specified", default=0)
+
     parser.add_argument("-v",   "--verbose",  action='store_true',
                         help="Verbose output")
 
     parser.add_argument("-permute",   "--permute",  action='store_true',
                         help="Permute sequence")
+
+    parser.add_argument("-writeall",   "--writeall",  action='store_true',
+                        help="Write all results")
 
     parser.add_argument("-seed",   "--seed",  type=int, default=0,
                         help="Random seed")
@@ -3459,9 +3752,11 @@ def main():
     score_func              = parse_score_function(args.score)
     optimization_func       = parse_optim_function(args.func)
     global_solutions        = args.nsol
+    dontbreak_less_than     = args.dontbreak
     verbose_output          = args.verbose
     random_seed             = args.seed
     permute_sequence        = args.permute
+    write_all_results       = args.writeall
     shuffle_oligos          = not args.sort
 
     # Create args dictionary
@@ -3472,9 +3767,11 @@ def main():
                  'score': args.score,
                  'func': args.func,
                  'nsol': args.nsol,
+                 'dontb': args.dontbreak,
                  'verbose': args.verbose,
                  'seed': args.seed,
                  'permute': args.permute,
+                 'writeall': args.writeall,
                  'sort': args.sort}
 
     # Check sequence start position
@@ -3531,6 +3828,9 @@ def main():
     # Set output directory
     new_autobreak.set_output_directory(input_filename)
 
+    # Set write all flag
+    new_autobreak.set_write_all_results(write_all_results)
+
     # Set optimization temperature
     new_autobreak.set_temperature_parameter()
 
@@ -3547,7 +3847,7 @@ def main():
     new_origami.prepare_origami()
 
     # Define json output
-    new_autobreak.define_json_output()
+    new_autobreak.define_output_files()
 
     # Write input arguments
     new_autobreak.write_input_args()
@@ -3555,16 +3855,28 @@ def main():
     # Cluster staples
     new_origami.cluster_oligo_groups()
 
+    # Set dont break flag for oligos
+    new_origami.set_dont_break_oligos(dontbreak_less_than)
+
     # Check if it is a read-only or autobreak run
     if not read_only:
         # Make break-break graph
         new_autobreak.initialize()
+
+        # Create results excel file
+        new_autobreak.create_results_excel_file()
 
         # Run the permutation protocol
         new_autobreak.permute_scaffold_sequence()
 
         # Compare complete solutions
         new_autobreak.compare_complete_solutions()
+
+        # Write results summary
+        new_autobreak.write_results_summary()
+
+        # Write best result
+        new_autobreak.write_best_result()
 
         # Break best solutions
         new_autobreak.break_best_complete_solution()
@@ -3577,7 +3889,6 @@ def main():
 
     # Write result to json
     new_autobreak.write_final_part_to_json()
-
 
 if __name__ == "__main__":
     main()
