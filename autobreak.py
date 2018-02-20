@@ -1031,7 +1031,7 @@ class Origami:
         self.set_sequence_offset(self.sequence_start_pos)
 
         # Apply sequence
-        self.apply_sequence()
+        self.apply_sequence(self.sequence_offset)
 
         # Assign strand sequences
         self.assign_strands_dna()
