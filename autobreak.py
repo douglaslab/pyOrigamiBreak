@@ -8,6 +8,7 @@
 from tqdm import tqdm
 from cadnano.document import Document
 from matplotlib import cm
+from operator import itemgetter
 
 import numpy as np
 import cadnano
@@ -183,7 +184,7 @@ class GroupBreaksolution:
                 if self.break_solutions[oligo_key]:
                     self.break_solutions[oligo_key].print_solution()
 
-    def calculate_penalty(self):
+    def calculate_penalty(self, verbose=False):
         '''
         Calculate penalty for the oligo group solution
         '''
@@ -198,7 +199,8 @@ class GroupBreaksolution:
 
             # If the solution doesnt exist move to next break solution
             if not break_solution:
-                tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0], key[1], key[2]))
+                if verbose:
+                    tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0], key[1], key[2]))
                 self.complete = False
                 continue
 
@@ -227,6 +229,36 @@ class GroupBreaksolution:
         # Divide penalty score by 2
         self.total_penalty = int(self.total_penalty/2)
 
+
+class CompleteBreakSolution:
+    '''
+    Complete break solution class
+    '''
+
+    def __init__(self):
+
+        self.group_solutions = {}
+        self.total_score     = 0
+        self.total_penalty   = 0
+        self.sequence_offset = 0
+        self.complete        = True
+
+    def calculate_total_score(self):
+        '''
+        Calculate total score for the best solutions
+        '''
+        self.total_score   = 0
+        self.total_penalty = 0
+        self.complete      = True
+        
+        for key in self.group_solutions:
+            # Break group solution
+            if self.group_solutions[key]:
+                self.total_score   += self.group_solutions[key].total_score
+                self.total_penalty += self.group_solutions[key].total_penalty
+                self.complete      *= self.group_solutions[key].complete
+            else:
+                self.complete       = False
 
 class OligoGroup:
     def __init__(self):
@@ -323,7 +355,7 @@ class OligoGroup:
                     continue
 
                 # 1. Create shortest paths
-                oligo.generate_shortest_paths(num_oligo_solutions)
+                oligo.generate_shortest_paths(num_oligo_solutions, verbose=verbose)
 
                 # 2. Remove penalized solutions
                 oligo.remove_penalized_solutions()
@@ -348,23 +380,27 @@ class OligoGroup:
             # Add solution to list
             self.group_solutions.append(new_group_solution)
 
-    def sort_solutions(self):
+    def sort_solutions(self, filter_incomplete=True):
         '''
         Sort solutions based on the penalty score
         '''
-        # 1. Sort based on total score
+        # 1. Filter incomplete solutions
+        if filter_incomplete:
+            self.group_solutions = list(filter(lambda x: x.complete, self.group_solutions))
+
+        # 2. Sort based on total score
         self.group_solutions.sort(key=lambda x: x.total_score, reverse=True)
 
-        # 2. Assign best total score solution
+        # 3. Assign best total score solution
         if len(self.group_solutions) > 0:
             self.best_score_solution = self.group_solutions[0]
         else:
             self.best_score_solution = None
 
-        # 3. Sort based on total penalty
+        # 4. Sort based on total penalty
         self.group_solutions.sort(key=lambda x: x.total_penalty)
 
-        # 4. Assign best penalty solution
+        # 5. Assign best penalty solution
         if len(self.group_solutions) > 0:
             self.best_penalty_solution = self.group_solutions[0]
         else:
@@ -602,7 +638,7 @@ class Oligo:
         self.folding_prob  = new_edge.edge_prob
         self.Tf            = new_edge.edge_Tf
 
-    def color_by_folding_prob(self, color_map='binary'):
+    def color_by_folding_prob(self, color_map='bwr'):
         '''
         Color by the segments
         '''
@@ -622,7 +658,7 @@ class Oligo:
         # Apply the color
         self.cadnano_oligo.applyColor(self.hexcolor)
 
-    def color_by_Tf(self, color_map='binary', min_Tf=30, max_Tf=50):
+    def color_by_Tf(self, color_map='bwr', min_Tf=30, max_Tf=50):
         '''
         Color by the segments
         '''
@@ -711,7 +747,7 @@ class Oligo:
             # Update current breaks
             current_break = current_break.next_break
 
-    def generate_shortest_paths(self, num_solutions=1):
+    def generate_shortest_paths(self, num_solutions=1 , verbose=False):
         '''
         Get the shortest paths for the oligo if only it allowed to break it
         '''
@@ -720,7 +756,8 @@ class Oligo:
         k_select = self.origami.autobreak.k_select
 
         # Show oligo being processed - use tdqm
-        tqdm.write('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)))
+        if verbose:
+            tqdm.write('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)))
 
         if self.dont_break:
             self.break_solutions = []
@@ -817,6 +854,9 @@ class Origami:
         self.very_long_staples_exist      = True
         self.dont_break_very_long_staples = False
 
+        # DNA Sequence parameters
+        self.sequence_offset = 0
+
     def determine_num_crossovers(self):
         '''
         Determine total number of crossovers
@@ -853,6 +893,22 @@ class Origami:
 
                 # Update current strand
                 current_strand = current_strand.next_strand
+
+    def set_sequence_offset(self, key):
+        '''
+        Set sequence offset for scaffold from position key (vh,idx) 
+        '''
+        # Determine the sequence offset
+        self.sequence_offset = 0
+
+        if key in self.key2scaffold:
+            self.sequence_offset = self.key2scaffold[key][0]-1
+
+    def set_sequence_start_pos(self, key):
+        '''
+        Set sequence start position in (vh, idx)
+        '''
+        self.sequence_start_pos = key
 
     def get_scaffold_positions(self, vh, idx):
         '''
@@ -962,9 +1018,6 @@ class Origami:
         # Read sequence file
         self.read_sequence()
 
-        # Apply sequence
-        self.apply_sequence()
-
         # Read scaffolds
         self.read_scaffolds()
 
@@ -973,6 +1026,15 @@ class Origami:
 
         # Build scaffold map
         self.build_scaffold_map()
+
+        # Set sequence offset
+        self.set_sequence_offset(self.sequence_start_pos)
+
+        # Apply sequence
+        self.apply_sequence()
+
+        # Assign strand sequences
+        self.assign_strands_dna()
 
         # Assign scaffold positions
         self.assign_scaffold_positions()
@@ -1055,6 +1117,21 @@ class Origami:
         # Assign part
         self.part = self.doc.activePart()
 
+    def assign_strands_dna(self):
+        '''
+        Assign strand sequences from cadnano part
+        '''
+        for oligo in self.oligos['staple']:
+
+            # Assign current strand
+            current_strand = oligo.null_strand.next_strand
+
+            while current_strand:
+                current_strand.dna = current_strand.cadnano_strand.sequence()
+
+                # Update current strand
+                current_strand = current_strand.next_strand
+
     def read_oligo(self, oligo, oligo_type='staple'):
         '''
         Read oligo from 5' to 3'
@@ -1105,7 +1182,6 @@ class Origami:
             new_strand.forward            = strand.isForward()
             new_strand.idxLow, new_strand.idxHigh = ((new_strand.idx5p, new_strand.idx3p)
                                                      if new_strand.forward else (new_strand.idx3p, new_strand.idx5p))
-            new_strand.dna                = strand.sequence()
             new_strand.direction          = -1 + 2*strand.isForward()
             new_strand.complement_strands = strand.getComplementStrands()[::new_strand.direction]
             new_strand.length             = new_strand.direction*(new_strand.idx3p-new_strand.idx5p)+1
@@ -1500,6 +1576,16 @@ class Origami:
 
                 # For circular oligos add one more crossover
                 oligo.num_crossovers += 1
+
+    def update_sequences_dna(self):
+        '''
+        Update the sequences dna
+        '''
+        for oligo in self.oligos['staple']:
+
+            # Iterate over the sequences
+            for current_sequence in oligo.sequences:
+                current_sequence.dna = current_sequence.strand.dna[current_sequence.strLow:current_sequence.strHigh+1]
 
     def apply_break_rules(self):
         '''
@@ -1936,15 +2022,23 @@ class Origami:
 
             # Convert to upper case
             self.scaffold_sequence = self.scaffold_sequence.upper()
+
+            # If sequence length is less than scaffold length quit
+            if len(self.scaffold_sequence) < self.scaffolds[0].length():
+                sys.exit('SCAFFOLD SEQUENCE IS SHORTER THAN SCAFFOLD LENGTH!')
+
         elif len(self.scaffolds) > 0:
             self.scaffold_sequence = utilities.generate_random_sequence(self.scaffolds[0].length())
 
-    def apply_sequence(self, start_position=None):
+    def apply_sequence(self, offset = 0):
         '''
         Apply sequence to scaffold
         '''
+        self.sequence_offset = offset
+
         if len(self.scaffolds) > 0:
-            self.scaffolds[0].applySequence(self.scaffold_sequence)
+            self.scaffolds[0].applySequence(self.scaffold_sequence[offset:]+
+                                            self.scaffold_sequence[:offset])
 
     def get_coordinates(self, vh, index):
         '''
@@ -2064,6 +2158,22 @@ class AutoBreak:
         # Verbose output
         self.verbose_output                 = False
 
+        # Solutions containers
+        self.complete_solutions             = {}
+        self.best_complete_solution         = None
+
+        # Sequence parameter
+        self.best_sequence_offset           = 0 
+
+        # Permutation parameter
+        self.permute_sequence               = False
+
+    def set_permute_sequence(self, permute=False):
+        '''
+        Set permute sequence
+        '''
+        self.permute_sequence = permute
+
     def color_oligos_by_folding_prob(self):
         '''
         Color oligos by folding prob
@@ -2177,13 +2287,40 @@ class AutoBreak:
         '''
         self.verbose_output = verbose
 
+    def shift_scaffold_sequence(self, offset=0):
+        '''
+        Shift scaffold sequence and update autobreak graphs
+        '''
+        # Apply the offset and shift sequence
+        self.origami.apply_sequence(offset)
+
+        # Update strand and sequence dna
+        self.origami.assign_strands_dna()
+        self.origami.update_sequences_dna()
+
+        # Update graph edge weights
+        self.update_edge_weights()
+
+    def permute_scaffold_sequence(self):
+        '''
+        Permute scaffold sequence
+        '''
+        # Set final offset
+        final_offset = 1
+        if self.permute_sequence:
+            final_offset = len(self.origami.scaffold_sequence)
+
+        for offset in tqdm(range(0, final_offset), desc='Permutation loop', leave=False,
+                           dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}'):
+            # Shift the sequence to the offset
+            self.shift_scaffold_sequence(offset)
+            # Run autobreak
+            self.run_autobreak()
+
     def run_autobreak(self):
         '''
         Run basic autobreak protocol
         '''
-
-        # Make break-break graph
-        self.initialize()
 
         # Create stepwise group solutions
         self.create_stepwise_group_solutions()
@@ -2193,12 +2330,6 @@ class AutoBreak:
 
         # Combine group solutions
         self.combine_group_solutions()
-
-        # Calcute total score
-        self.calculate_total_score()
-
-        # Break best solutions
-        self.break_best_solutions()
 
     def determine_oligo_scores(self):
         '''
@@ -2234,10 +2365,23 @@ class AutoBreak:
 
             # Create solutions via stepwise approach
             oligo_group.create_stepwise_oligo_solutions(self.NUM_OLIGO_SOLUTIONS, self.NUM_GLOBAL_SOLUTIONS,
-                                                        self.optim_pick_method, self.optim_shuffle_oligos)
+                                                        self.optim_pick_method, self.optim_shuffle_oligos,
+                                                        verbose=self.verbose_output)
 
             # Remove incomplete solutions
             oligo_group.remove_incomplete_solutions()
+
+    def update_edge_weights(self):
+        '''
+        Update edge weights
+        '''
+        for oligo in self.origami.oligos['staple']:
+            # Visit each break object
+            for current_break in oligo.breaks:
+                # Iterate over the break edges
+                for break_edge in current_break.break_edges:
+                    # Update edge weights
+                    break_edge.update_connection()
 
     def initialize(self):
         '''
@@ -2313,7 +2457,7 @@ class AutoBreak:
         '''
         for oligo in self.origami.oligos['staple']:
             if not oligo.dont_break:
-                oligo.generate_shortest_paths(self.NUM_OLIGO_SOLUTIONS)
+                oligo.generate_shortest_paths(self.NUM_OLIGO_SOLUTIONS, verbose=self.verbose_output)
                 oligo.remove_penalized_solutions()
 
     def combine_oligo_solutions(self):
@@ -2329,46 +2473,73 @@ class AutoBreak:
         '''
         for oligo_group in self.origami.oligo_groups:
             oligo_group.sort_solutions()
-            oligo_group.print_solutions()
+
+            # If verbose output print solutions
+            if self.verbose_output:
+                oligo_group.print_solutions()
 
     def combine_group_solutions(self):
         '''
         Combine group solutions
         '''
-        self.best_score_solutions   = {}
-        self.best_penalty_solutions = {}
 
+        # Make new complete solution
+        new_complete_solution = CompleteBreakSolution()
+        new_complete_solution.group_solutions = {}
+        new_complete_solution.sequence_offset = self.origami.sequence_offset
+
+        # Iterate over all the oligo groups
         for oligo_group in self.origami.oligo_groups:
 
             # Add the best and best penalty solutions
-            self.best_score_solutions[oligo_group.key]   = oligo_group.best_score_solution
-            self.best_penalty_solutions[oligo_group.key] = oligo_group.best_penalty_solution
+            new_complete_solution.group_solutions[oligo_group.key]  = oligo_group.best_score_solution
 
-    def break_best_solutions(self):
+        # Calculate the total score and penalty for the complete solution
+        new_complete_solution.calculate_total_score()
+
+        # Assign the best complete solution if it is complete
+        if new_complete_solution.complete:
+            self.complete_solutions[self.origami.sequence_offset] = new_complete_solution
+
+    def compare_complete_solutions(self):
+        '''
+        Compare complete solutions
+        '''
+        # Sort complete solutions
+        self.sorted_complete_solutions = sorted(list(self.complete_solutions.values()), key=lambda solution: solution.total_score, reverse=True)
+
+        # Print the scores
+        for complete_solution in self.sorted_complete_solutions:
+            # Print total score and crossover penalty for the best solution
+            tqdm.write('Complete solutions: Offset: %-5d - TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
+                       (complete_solution.sequence_offset, complete_solution.total_score, complete_solution.total_penalty))
+
+        # Assign best solution
+        if len(self.sorted_complete_solutions) > 0:
+            self.best_complete_solution = self.sorted_complete_solutions[0]
+
+    def set_best_sequence_offset(self):
+        '''
+        Set best sequence offset
+        '''
+        # Best sequence offset
+        if self.best_complete_solution:
+            self.best_sequence_offset = self.best_complete_solution.sequence_offset
+
+        # Apply the offset and shift sequence
+        self.origami.apply_sequence(offset)
+
+    def break_best_complete_solution(self):
         '''
         Oligo breaking routine
         '''
+        if self.best_complete_solution is None:
+            sys.exit('SOLUTION DOESNT EXIST!')
 
-        # Print total score and crossover penalty for the best solution
-        tqdm.write('BestSolution: TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
-                   (self.total_score, self.total_penalty))
-
-        for key in self.best_score_solutions:
+        for key in self.best_complete_solution.group_solutions:
             # Break group solution
-            if self.best_score_solutions[key]:
-                self.best_score_solutions[key].break_group_solution()
-
-    def calculate_total_score(self):
-        '''
-        Calculate total score for the best solutions
-        '''
-        self.total_score   = 0
-        self.total_penalty = 0
-        for key in self.best_score_solutions:
-            # Break group solution
-            if self.best_score_solutions[key]:
-                self.total_score   += self.best_score_solutions[key].total_score
-                self.total_penalty += self.best_score_solutions[key].total_penalty
+            if self.best_complete_solution.group_solutions[key]:
+                self.best_complete_solution.group_solutions[key].break_group_solution()
 
     def set_score_func(self, func_args):
         '''
@@ -2527,8 +2698,21 @@ class BreakEdge:
 
     def make_connection(self, from_break, to_break):
         '''
-        Make the connection between self and another edge
+        Make the connection between two break nodes
         '''
+
+        # Set the break nodes
+        self.current_break = from_break
+        self.next_break    = to_break
+
+        # Assign the edge weights
+        self.update_connection()
+
+    def update_connection(self):
+        '''
+        Update edge weights
+        '''
+
         # Initialize sequence and dna list
         self.sequence_list  = []
         
@@ -2537,10 +2721,6 @@ class BreakEdge:
 
         self.ssDNA_pos_list = []
         self.dsDNA_pos_list = []
-
-        # Set the break nodes
-        self.current_break = from_break
-        self.next_break    = to_break
 
         # Make the sequence list
         self.sequence_list.append(self.current_break.sequence)
@@ -3141,6 +3321,11 @@ def parse_optim_function(function_input):
 
     return functions
 
+def parse_sequence_position(key_input):
+    '''
+    Parse sequence position
+    '''
+    return tuple([int(x) for x in key_input.split('.')])
 
 def main():
 
@@ -3166,11 +3351,17 @@ def main():
     parser.add_argument("-seq",   "--sequence", type=str, default=None,
                         help="Sequence file in txt")
 
+    parser.add_argument("-pos",   "--position", type=str, default=None,
+                        help="Sequence start position")
+
     parser.add_argument("-nsol",   "--nsol",     type=int,
-                        help="Number of solutions", default=10)
+                        help="Number of solutions", default=5)
 
     parser.add_argument("-v",   "--verbose",  action='store_true',
                         help="Verbose output")
+
+    parser.add_argument("-permute",   "--permute",  action='store_true',
+                        help="Permute sequence")
 
     parser.add_argument("-seed",   "--seed",  type=int, default=0,
                         help="Random seed")
@@ -3193,6 +3384,14 @@ def main():
     global_solutions        = args.nsol
     verbose_output          = args.verbose
     random_seed             = args.seed
+    permute_sequence        = args.permute
+
+    # Check sequence start position
+    if args.position:
+        permute_sequence = False
+        start_pos = parse_sequence_position(args.position)
+    else:
+        start_pos = (-1,-1)
 
     # Check if input file exists
     if not os.path.isfile(input_filename):
@@ -3230,6 +3429,9 @@ def main():
     # Set score functions
     new_autobreak.set_score_func(score_func)
 
+    # Set permute sequence
+    new_autobreak.set_permute_sequence(permute_sequence)
+
     # Preprocess optimization parameters
     new_autobreak.preprocess_optim_params()
 
@@ -3242,6 +3444,9 @@ def main():
     # Set sequence filename
     new_origami.set_sequence_file(sequence_filename)
 
+    # Set sequence start position
+    new_origami.set_sequence_start_pos(start_pos)
+
     # Prepare origami for autobreak
     new_origami.prepare_origami()
 
@@ -3253,9 +3458,18 @@ def main():
 
     # Check if it is a read-only or autobreak run
     if not read_only:
-        # Run autobreak
-        new_autobreak.run_autobreak()
-    
+        # Make break-break graph
+        new_autobreak.initialize()
+
+        # Run the permutation protocol
+        new_autobreak.permute_scaffold_sequence()
+
+        # Compare complete solutions
+        new_autobreak.compare_complete_solutions()
+
+        # Break best solutions
+        new_autobreak.break_best_complete_solution()
+
     # Read only the scores
     new_autobreak.determine_oligo_scores()
 
