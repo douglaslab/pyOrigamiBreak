@@ -3784,7 +3784,7 @@ def main():
     parser.add_argument("-read",   "--read",  action='store_true',
                         help="Read-only to determine oligo scores")
 
-    parser.add_argument("-rule",   "--rule",     type=str, default='xstap.all3',
+    parser.add_argument("-rule",   "--rule",     type=str, default='xstap',
                         help="Break rule")
 
     parser.add_argument("-score",   "--score",     type=str, default='sum',
@@ -3803,7 +3803,7 @@ def main():
                         help="Sort oligos for stepwise optimization.")
 
     parser.add_argument("-nsol",   "--nsol",     type=int,
-                        help="Number of solutions", default=5)
+                        help="Number of solutions", default=10)
 
     parser.add_argument("-dontb",   "--dontbreak",  type=int,
                         help="Dont break oligos less than the length specified", default=0)
