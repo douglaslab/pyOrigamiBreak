@@ -2755,6 +2755,14 @@ class AutoBreak:
         for oligo in self.origami.oligos['staple']:
             oligo.get_initial_score()
 
+    def export_initial_scores(self):
+        '''
+        Export initial scores to final excel file
+        '''
+
+        # Create a dummy complete solution object as data holder
+        self.final_complete_solution = CompleteBreakSolution()
+
     def create_oligo_solutions(self):
         '''
         Break oligos
@@ -3027,12 +3035,12 @@ class BreakEdge:
                         self.next_break.type,
                         self.next_break.location,
                         self.edge_length,
-                        ''.join([str(x) for x in self.dsDNA_seq_list]),
+                        ''.join([str(x) for x in self.ssDNA_seq_list]),
                         self.edge_weight,
                         self.edge_prob,
                         self.edge_logprob,
                         self.edge_Tf,
-                        self.edge_Tm,
+                        self.edge_maxTm,
                         self.edge_maxseq,
                         int(self.edge_has14),
                         self.dG_total,
@@ -3148,9 +3156,12 @@ class BreakEdge:
         self.dsDNA_seq_list = [dna.strip() for dna in self.ssDNA_seq_list if len(dna.strip()) > 0]
         self.dsDNA_pos_list = [list(filter(lambda x: x, pos_list)) for pos_list in self.ssDNA_pos_list]
 
+        # Replace all empty characters in ssDNA seq list with ?
+        self.ssDNA_seq_list = [dna.replace(" ","?") for dna in self.ssDNA_seq_list]
+
         # Remove empty lists from positions list
         self.dsDNA_pos_list = list(filter(lambda x: len(x), self.dsDNA_pos_list))
-        
+
         # Determine mean values for the positions
         self.dsDNA_mean_pos_list = [np.round(np.mean(x)) for x in self.dsDNA_pos_list]
 
