@@ -9,6 +9,7 @@ from tqdm import tqdm
 from cadnano.document import Document
 from matplotlib import cm
 from operator import itemgetter
+from shutil import copyfile
 
 import numpy as np
 import cadnano
@@ -291,7 +292,7 @@ class CompleteBreakSolution:
 
         self.temperature_celcius = None
         self.group_solutions     = {}
-        self.total_prob          = 0
+        self.total_prob          = 1
         self.total_score         = 0
         self.total_penalty       = 0
         self.sequence_offset     = 0
@@ -392,6 +393,15 @@ class CompleteBreakSolution:
         '''
         Export the staples and its scores into an excel file
         '''
+        # Get summary rows
+        summary_rows = np.array(self.get_summary_rows())
+        
+        # Get the cvs rows
+        cvs_rows = np.array(self.get_cvs_rows())
+
+        # If the data arrays are empty, quit
+        if len(summary_rows) == 0 or len(cvs_rows) == 0:
+            return
 
         # Load workbook
         book = openpyxl.load_workbook(filename)
@@ -402,10 +412,10 @@ class CompleteBreakSolution:
         sheet_number = self.sequence_offset
 
         # Create data frames
-        summary_frame = pandas.DataFrame(np.array(self.get_summary_rows()))
+        summary_frame = pandas.DataFrame(summary_rows)
 
         # Create staples frames
-        staples_frame  = pandas.DataFrame(np.array(self.get_cvs_rows()))
+        staples_frame  = pandas.DataFrame(cvs_rows)
 
         # Write summary data
         summary_frame.to_excel(writer, sheet_name = str(sheet_number), header=None, index=False)
@@ -2371,11 +2381,18 @@ class AutoBreak:
         Write results summary
         '''
 
+        # Get results summary
+        results_summary = np.array(self.get_results_summary())
+
+        # If the array is empty, quit
+        if len(results_summary) == 0:
+            sys.exit('SOLUTION DOESNT EXIST')
+
         # Create writer
         writer      = pandas.ExcelWriter(self.summary_excel_file, engine = 'openpyxl')
 
         # Create data frames
-        summary_frame  = pandas.DataFrame(np.array(self.get_results_summary()))
+        summary_frame  = pandas.DataFrame(results_summary)
 
         # Create summary header
         summary_header = ['SequenceOffset','TotalProb', 'TotalScore','TotalPenalty'] 
@@ -2488,6 +2505,9 @@ class AutoBreak:
 
         # Make directory
         os.mkdir(self.output_directory)
+
+        # Copy input file to output directory
+        copyfile(input_filename, self.output_directory+'/'+tail)
 
     def write_input_args(self):
         '''
@@ -2760,8 +2780,52 @@ class AutoBreak:
         Export initial scores to final excel file
         '''
 
-        # Create a dummy complete solution object as data holder
-        self.final_complete_solution = CompleteBreakSolution()
+        # Create a dummy Complete Break Solution object
+        self.final_complete_break_solution = CompleteBreakSolution()
+
+        # Store final cvs rows
+        self.final_cvs_rows = []
+
+        # Save total score and prob
+        total_score = 0
+        total_prob  = 1.0
+        for oligo in self.origami.oligos['staple']:
+            self.final_cvs_rows.append(oligo.end_to_end_edge.get_cvs_row_object())
+
+            # Add scores
+            total_score += oligo.initial_score
+            total_prob  *= oligo.folding_prob
+
+        # Prepare summary data
+        self.final_summary_data = [['TotalProb', total_prob],
+                                   ['TotalScore', total_score]]
+
+        # Check if the data arrays are empty
+        if len(self.final_cvs_rows) == 0:
+            return
+
+        # Results header
+        cvs_header = self.final_complete_break_solution.cvs_header
+
+        # Write the results
+        writer      = pandas.ExcelWriter(self.autobreak_excel_file,
+                                         engine = 'openpyxl')
+
+        # Create data frames
+        summary_frame = pandas.DataFrame(np.array(self.final_summary_data))
+
+        # Create staples frames
+        staples_frame  = pandas.DataFrame(np.array(self.final_cvs_rows))
+
+        # Write summary data
+        summary_frame.to_excel(writer, sheet_name = str('final'), header=None, index=False)
+
+        # Write staples data
+        staples_frame.to_excel(writer, sheet_name = str('final'), header=cvs_header, index=False, startrow=10)
+
+         # Save writer and close
+        writer.save()
+        writer.close()
 
     def create_oligo_solutions(self):
         '''
@@ -3026,8 +3090,16 @@ class BreakEdge:
 
         '''
 
+        # Check if the oligo group exists 
+        # Doesn't exist if the clustering is not performed
+
+        oligo_group_key = -1
+        if self.current_break.oligo_group:
+            oligo_group_key = self.current_break.oligo_group.key
+
+
         cvs_row =      ['.'.join([str(x) for x in self.current_break.oligo.key]),
-                        self.current_break.oligo_group.key,
+                        oligo_group_key,
                         '.'.join([str(x) for x in self.current_break.key]),
                         self.current_break.type,
                         self.current_break.location,
@@ -3897,6 +3969,9 @@ def main():
 
     # Color oligos by folding prob
     new_autobreak.color_oligos_by_Tf()
+
+    # Export initial scores
+    new_autobreak.export_initial_scores()
 
     # Write result to json
     new_autobreak.write_final_part_to_json()
