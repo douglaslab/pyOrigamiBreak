@@ -1077,7 +1077,7 @@ class Origami:
         Set sequence offset for scaffold from position key (vh,idx) 
         '''
         # Determine the sequence offset
-        self.sequence_offset = 0
+        self.sequence_offset = self.sequence_start_offset
 
         if key in self.key2scaffold:
             self.sequence_offset = self.key2scaffold[key][0]-1
@@ -1087,6 +1087,15 @@ class Origami:
         Set sequence start position in (vh, idx)
         '''
         self.sequence_start_pos = key
+
+    def set_sequence_start_offset(self, offset=0):
+        '''
+        Set sequence offset 
+        '''
+        if offset >= 0:
+            self.sequence_start_offset = offset
+        else:
+            self.sequence_start_offset = 0
 
     def get_scaffold_positions(self, vh, idx):
         '''
@@ -2197,8 +2206,14 @@ class Origami:
         Read sequence file
         '''
 
-        if self.sequence_file and os.path.isfile(self.sequence_file):
+        # 1. Check the popular scaffolds list
+        # 2. Check if the file exists
+        # 3. Generate random sequence
 
+        if self.sequence_file in utilities.SCAFFOLD_SEQUENCES:
+            self.scaffold_sequence = utilities.SCAFFOLD_SEQUENCES[self.sequence_file]
+
+        elif self.sequence_file and os.path.isfile(self.sequence_file):
             # Read sequence from file
             f = open(self.sequence_file)
             self.scaffold_sequence = ''.join([line.strip() for line in f.readlines()])
@@ -2508,6 +2523,18 @@ class AutoBreak:
 
         # Copy input file to output directory
         copyfile(input_filename, self.output_directory+'/'+tail)
+
+    def copy_sequence_file(self):
+        '''
+        Copy sequence file to output directory
+        '''
+        if self.origami.sequence_file and os.path.isfile(self.origami.sequence_file):
+            head, tail = os.path.split(self.origami.sequence_file)
+            copyfile(self.origami.sequence_file, self.output_directory+'/'+tail)
+        elif self.origami.sequence_file not in utilities.SCAFFOLD_SEQUENCES:
+            f = open(self.output_directory+'/random_sequence.txt','w')
+            f.write(self.origami.scaffold_sequence)
+            f.close()
 
     def write_input_args(self):
         '''
@@ -3799,6 +3826,9 @@ def main():
     parser.add_argument("-pos",   "--position", type=str, default=None,
                         help="Sequence start position")
 
+    parser.add_argument("-offset","--offset", type=int, default=None,
+                        help="Sequence offset. Offset overrides position.")
+
     parser.add_argument("-sort", "--sort", action='store_true',
                         help="Sort oligos for stepwise optimization.")
 
@@ -3840,6 +3870,7 @@ def main():
     random_seed             = args.seed
     permute_sequence        = args.permute
     write_all_results       = args.writeall
+    start_offset            = args.offset
     shuffle_oligos          = not args.sort
 
     # Create args dictionary
@@ -3857,12 +3888,20 @@ def main():
                  'writeall': args.writeall,
                  'sort': args.sort}
 
-    # Check sequence start position
-    if args.position:
+    # Check if offset and/or offset is provided
+    if args.position or args.offset:
         permute_sequence = False
-        start_pos = parse_sequence_position(args.position)
+
+    # Offset overrides position
+    if args.offset:
+        start_offset = args.offset
+        start_pos    = (-1,-1)
+    elif args.position:
+        start_pos    = parse_sequence_position(args.position)
+        start_offset = -1
     else:
-        start_pos = (-1,-1)
+        start_offset = -1
+        start_pos    = (-1,-1)
 
     # Check if input file exists
     if not os.path.isfile(input_filename):
@@ -3926,6 +3965,9 @@ def main():
     # Set sequence start position
     new_origami.set_sequence_start_pos(start_pos)
 
+    # Set sequence start offset
+    new_origami.set_sequence_start_offset(start_offset)
+
     # Prepare origami for autobreak
     new_origami.prepare_origami()
 
@@ -3934,6 +3976,9 @@ def main():
 
     # Write input arguments
     new_autobreak.write_input_args()
+
+    # Write sequence file to output directory
+    new_autobreak.copy_sequence_file()
 
     # Cluster staples
     new_origami.cluster_oligo_groups()
