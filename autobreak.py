@@ -1027,6 +1027,22 @@ class Origami:
         # DNA Sequence parameters
         self.sequence_offset = 0
 
+    def circularize_scaffold(self):
+        '''
+        Circularize scaffold
+        '''
+
+        strand5p = self.scaffolds[0].strand5p()
+        strand3p = self.scaffolds[0].strand3p()
+
+        # Set sequence start position before circularizing
+        self.sequence_start_pos = (stran5p.idNum(),stran5p.idx5Prime())
+
+        # Connect strand5p and strand3p
+        if not self.scaffolds[0].isCircular():
+            
+            strand3p.setConnection3p(strand5p)
+
     def determine_num_crossovers(self):
         '''
         Determine total number of crossovers
@@ -1198,6 +1214,9 @@ class Origami:
         '''
         # Get oligos
         self.get_oligos()
+
+        # Circularize scaffold
+        self.circularize_scaffold()
 
         # Reset oligos list
         self.reset_oligos()
@@ -2516,7 +2535,7 @@ class AutoBreak:
         if len(number_extensions) > 0:
             output_counter = max(number_extensions)+1
 
-        self.output_directory = head+'/'+root+"_%03d" % (output_counter)
+        self.output_directory = head+'/'+root+"_autobreak_%03d" % (output_counter)
 
         # Make directory
         os.mkdir(self.output_directory)
