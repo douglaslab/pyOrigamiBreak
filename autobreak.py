@@ -1036,12 +1036,21 @@ class Origami:
         strand3p = self.scaffolds[0].strand3p()
 
         # Set sequence start position before circularizing
-        self.sequence_start_pos = (stran5p.idNum(),stran5p.idx5Prime())
+        self.sequence_start_pos = (strand5p.idNum(),strand5p.idx5Prime())
 
         # Connect strand5p and strand3p
-        if not self.scaffolds[0].isCircular():
-            
-            strand3p.setConnection3p(strand5p)
+        if self.circularize and not self.scaffolds[0].isCircular():
+            if(strand5p.idNum() == strand3p.idNum() and
+               abs(strand5p.idx5Prime() - strand3p.idx3Prime()) == 1):
+                strand3p.merge(strand3p.idx3Prime())
+            else:
+                strand3p.setConnection3p(strand5p)
+
+            # Read cadnano oligos again
+            self.get_oligos()
+
+        # Set circularize oligo False so that this function is excuted only once
+        self.circularize = False
 
     def determine_num_crossovers(self):
         '''
@@ -1096,7 +1105,13 @@ class Origami:
         self.sequence_offset = self.sequence_start_offset
 
         if key in self.key2scaffold:
-            self.sequence_offset = self.key2scaffold[key][0]-1
+            self.sequence_offset += (-self.key2scaffold[key][0]+1)
+
+    def set_circularize(self, circularize=False):
+        '''
+        Set circularize (scaffold) parameter
+        '''
+        self.circularize = circularize
 
     def set_sequence_start_pos(self, key):
         '''
@@ -2253,7 +2268,6 @@ class Origami:
         Apply sequence to scaffold
         '''
         self.sequence_offset = offset
-
         if len(self.scaffolds) > 0:
             self.scaffolds[0].applySequence(self.scaffold_sequence[offset:]+
                                             self.scaffold_sequence[:offset])
@@ -2525,7 +2539,7 @@ class AutoBreak:
         root, ext        = os.path.splitext(tail)
 
         # List existing output directories
-        potential_directories = list(filter(lambda x:os.path.isdir(x), glob.glob(root+'_[0-9][0-9][0-9]')))
+        potential_directories = list(filter(lambda x:os.path.isdir(x), glob.glob(head+'/'+root+'_autobreak_[0-9][0-9][0-9]')))
 
         # Get the number extensions
         number_extensions = [int(x[-3:]) for x in potential_directories]
@@ -3846,7 +3860,7 @@ def main():
                         help="Sequence start position")
 
     parser.add_argument("-offset","--offset", type=int, default=None,
-                        help="Sequence offset. Offset overrides position.")
+                        help="Sequence offset")
 
     parser.add_argument("-sort", "--sort", action='store_true',
                         help="Sort oligos for stepwise optimization.")
@@ -3859,6 +3873,9 @@ def main():
 
     parser.add_argument("-v",   "--verbose",  action='store_true',
                         help="Verbose output")
+
+    parser.add_argument("-circularize", "--circularize",  action='store_true',
+                        help="Circularize scaffold")
 
     parser.add_argument("-permute",   "--permute",  action='store_true',
                         help="Permute sequence")
@@ -3891,6 +3908,7 @@ def main():
     write_all_results       = args.writeall
     start_offset            = args.offset
     shuffle_oligos          = not args.sort
+    circularize             = args.circularize
 
     # Create args dictionary
     args_dict = {'input': args.input,
@@ -3905,22 +3923,20 @@ def main():
                  'seed': args.seed,
                  'permute': args.permute,
                  'writeall': args.writeall,
-                 'sort': args.sort}
+                 'sort': args.sort,
+                 'circularize':args.circularize}
 
     # Check if offset and/or offset is provided
     if args.position or args.offset:
         permute_sequence = False
 
-    # Offset overrides position
+    # Initialize start position and sequence offsets
+    start_offset = -1
+    start_pos    = (-1,-1)
     if args.offset:
         start_offset = args.offset
-        start_pos    = (-1,-1)
-    elif args.position:
+    if args.position:
         start_pos    = parse_sequence_position(args.position)
-        start_offset = -1
-    else:
-        start_offset = -1
-        start_pos    = (-1,-1)
 
     # Check if input file exists
     if not os.path.isfile(input_filename):
@@ -3987,8 +4003,8 @@ def main():
     # Set sequence start offset
     new_origami.set_sequence_start_offset(start_offset)
 
-    # Prepare origami for autobreak
-    new_origami.prepare_origami()
+    # Set circularize
+    new_origami.set_circularize(circularize)
 
     # Define json output
     new_autobreak.define_output_files()
@@ -3996,17 +4012,17 @@ def main():
     # Write input arguments
     new_autobreak.write_input_args()
 
-    # Write sequence file to output directory
-    new_autobreak.copy_sequence_file()
-
-    # Cluster staples
-    new_origami.cluster_oligo_groups()
-
-    # Set dont break flag for oligos
-    new_origami.set_dont_break_oligos(dontbreak_less_than)
-
     # Check if it is a read-only or autobreak run
     if not read_only:
+        # Prepare origami for autobreak
+        new_origami.prepare_origami()
+
+        # Cluster staples
+        new_origami.cluster_oligo_groups()
+
+        # Set dont break flag for oligos
+        new_origami.set_dont_break_oligos(dontbreak_less_than)
+
         # Make break-break graph
         new_autobreak.initialize()
 
@@ -4039,6 +4055,9 @@ def main():
 
     # Write result to json
     new_autobreak.write_final_part_to_json()
+
+    # Write sequence file to output directory
+    new_autobreak.copy_sequence_file()
 
 if __name__ == "__main__":
     main()
