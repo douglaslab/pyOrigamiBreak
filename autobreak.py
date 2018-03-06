@@ -2502,7 +2502,7 @@ class AutoBreak:
         Set output directory
         '''
         # Split input file
-        head, tail       = os.path.split(input_filename)
+        head, tail       = os.path.split(os.path.abspath(input_filename))
         root, ext        = os.path.splitext(tail)
 
         # List existing output directories
@@ -2516,7 +2516,7 @@ class AutoBreak:
         if len(number_extensions) > 0:
             output_counter = max(number_extensions)+1
 
-        self.output_directory = root+"_%03d" % (output_counter)
+        self.output_directory = head+'/'+root+"_%03d" % (output_counter)
 
         # Make directory
         os.mkdir(self.output_directory)
