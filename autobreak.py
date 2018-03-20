@@ -56,7 +56,7 @@ class OligoBreakSolution:
     def get_cvs_rows(self):
         '''
         Prepare cvs writer object
-        
+
         COLUMNS
         1.  Oligo key
         2.  Oligo Group key
@@ -202,7 +202,7 @@ class GroupBreaksolution:
             # If the solution doesnt exist move to next break solution
             if not break_solution:
                 continue
-            
+
             # Extend the list with the row objects
             cvs_writer_rows.extend(break_solution.get_cvs_rows())
 
@@ -353,7 +353,7 @@ class CompleteBreakSolution:
         self.total_score   = 0
         self.total_penalty = 0
         self.complete      = True
-        
+
         for key in self.group_solutions:
             # Break group solution
             if self.group_solutions[key]:
@@ -385,7 +385,7 @@ class CompleteBreakSolution:
                         ['TotalScore', self.total_score],
                         ['TotalPenalty', self.total_penalty],
                         ['Complete', int(self.complete)],
-                        ['SequenceOffset',self.sequence_offset]]
+                        ['SequenceOffset', self.sequence_offset]]
 
         return summary_rows
 
@@ -395,7 +395,7 @@ class CompleteBreakSolution:
         '''
         # Get summary rows
         summary_rows = np.array(self.get_summary_rows())
-        
+
         # Get the cvs rows
         cvs_rows = np.array(self.get_cvs_rows())
 
@@ -405,9 +405,9 @@ class CompleteBreakSolution:
 
         # Load workbook
         book = openpyxl.load_workbook(filename)
-        writer      = pandas.ExcelWriter(filename, engine = 'openpyxl')
+        writer      = pandas.ExcelWriter(filename, engine='openpyxl')
         writer.book = book
-        
+
         # Assign sheet number
         sheet_number = self.sequence_offset
 
@@ -418,14 +418,15 @@ class CompleteBreakSolution:
         staples_frame  = pandas.DataFrame(cvs_rows)
 
         # Write summary data
-        summary_frame.to_excel(writer, sheet_name = str(sheet_number), header=None, index=False)
+        summary_frame.to_excel(writer, sheet_name=str(sheet_number), header=None, index=False)
 
         # Write staples data
-        staples_frame.to_excel(writer, sheet_name = str(sheet_number), header=self.cvs_header, index=False, startrow=10)
+        staples_frame.to_excel(writer, sheet_name=str(sheet_number), header=self.cvs_header, index=False, startrow=10)
 
-         # Save writer and close
+        # Save writer and close
         writer.save()
         writer.close()
+
 
 class OligoGroup:
     def __init__(self):
@@ -917,7 +918,7 @@ class Oligo:
             # Update current breaks
             current_break = current_break.next_break
 
-    def generate_shortest_paths(self, num_solutions=1 , verbose=False):
+    def generate_shortest_paths(self, num_solutions=1, verbose=False):
         '''
         Get the shortest paths for the oligo if only it allowed to break it
         '''
@@ -1036,7 +1037,7 @@ class Origami:
         strand3p = self.scaffolds[0].strand3p()
 
         # Set sequence start position before circularizing
-        self.sequence_start_pos = (strand5p.idNum(),strand5p.idx5Prime())
+        self.sequence_start_pos = (strand5p.idNum(), strand5p.idx5Prime())
 
         # Connect strand5p and strand3p
         if self.circularize and not self.scaffolds[0].isCircular():
@@ -1099,7 +1100,7 @@ class Origami:
 
     def set_sequence_offset(self, key):
         '''
-        Set sequence offset for scaffold from position key (vh,idx) 
+        Set sequence offset for scaffold from position key (vh,idx)
         '''
         # Determine the sequence offset
         self.sequence_offset = self.sequence_start_offset
@@ -1121,7 +1122,7 @@ class Origami:
 
     def set_sequence_start_offset(self, offset=0):
         '''
-        Set sequence offset 
+        Set sequence offset
         '''
         if offset >= 0:
             self.sequence_start_offset = offset
@@ -1671,7 +1672,7 @@ class Origami:
 
                         # Assign scaffold positions
                         new_sequence.scaffoldPos = []
-                        
+
                         # Get the total length for the sequence
                         new_sequence.totalLength = new_sequence.strHigh - new_sequence.strLow + 1
 
@@ -2196,7 +2197,7 @@ class Origami:
             vh = current_strand.vh
 
             for idx in range(idx5p, idx3p+direction, direction):
-                key = (vh ,idx)
+                key = (vh, idx)
                 num_inserts = current_strand.get_inserts(idx, idx)
                 position += (num_inserts+1)
 
@@ -2263,13 +2264,13 @@ class Origami:
         elif len(self.scaffolds) > 0:
             self.scaffold_sequence = utilities.generate_random_sequence(self.scaffolds[0].length())
 
-    def apply_sequence(self, offset = 0):
+    def apply_sequence(self, offset=0):
         '''
         Apply sequence to scaffold
         '''
         self.sequence_offset = offset
         if len(self.scaffolds) > 0:
-            self.scaffolds[0].applySequence(self.scaffold_sequence[offset:]+
+            self.scaffolds[0].applySequence(self.scaffold_sequence[offset:] +
                                             self.scaffold_sequence[:offset])
 
     def get_coordinates(self, vh, index):
@@ -2366,7 +2367,7 @@ class AutoBreak:
         self.optim_score_functions           = ['sum']
 
         # Structure factor
-        self.optim_structure_factor         = 1.0 
+        self.optim_structure_factor         = 1.0
 
         # Set function dictionary
         self.optim_funcs_dict                = {'14': self._optimize_14,
@@ -2399,7 +2400,7 @@ class AutoBreak:
         self.best_complete_solution         = None
 
         # Sequence parameter
-        self.best_sequence_offset           = 0 
+        self.best_sequence_offset           = 0
 
         # Permutation parameter
         self.permute_sequence               = False
@@ -2437,18 +2438,18 @@ class AutoBreak:
             sys.exit('SOLUTION DOESNT EXIST')
 
         # Create writer
-        writer      = pandas.ExcelWriter(self.summary_excel_file, engine = 'openpyxl')
+        writer      = pandas.ExcelWriter(self.summary_excel_file, engine='openpyxl')
 
         # Create data frames
         summary_frame  = pandas.DataFrame(results_summary)
 
         # Create summary header
-        summary_header = ['SequenceOffset','TotalProb', 'TotalScore','TotalPenalty'] 
+        summary_header = ['SequenceOffset', 'TotalProb', 'TotalScore', 'TotalPenalty']
 
         # Write summary data
-        summary_frame.to_excel(writer, sheet_name = 'summary', header=summary_header, index=False)
+        summary_frame.to_excel(writer, sheet_name='summary', header=summary_header, index=False)
 
-         # Save writer and close
+        # Save writer and close
         writer.save()
         writer.close()
 
@@ -2514,8 +2515,8 @@ class AutoBreak:
         RULE1. If there is no cross in break rule,
                make oligo solution and global solution number 1
                since Optimization yields the best result
-        
-        RUL2. If oligos are not shuffled, make num oligo solutions 
+
+        RUL2. If oligos are not shuffled, make num oligo solutions
               and global solutions 1
 
         '''
@@ -2539,7 +2540,8 @@ class AutoBreak:
         root, ext        = os.path.splitext(tail)
 
         # List existing output directories
-        potential_directories = list(filter(lambda x:os.path.isdir(x), glob.glob(head+'/'+root+'_autobreak_[0-9][0-9][0-9]')))
+        potential_directories = list(filter(lambda x: os.path.isdir(x),
+                                            glob.glob(head+'/'+root+'_autobreak_[0-9][0-9][0-9]')))
 
         # Get the number extensions
         number_extensions = [int(x[-3:]) for x in potential_directories]
@@ -2565,7 +2567,7 @@ class AutoBreak:
             head, tail = os.path.split(self.origami.sequence_file)
             copyfile(self.origami.sequence_file, self.output_directory+'/'+tail)
         elif self.origami.sequence_file not in utilities.SCAFFOLD_SEQUENCES:
-            f = open(self.output_directory+'/random_sequence.txt','w')
+            f = open(self.output_directory+'/random_sequence.txt', 'w')
             f.write(self.origami.scaffold_sequence)
             f.close()
 
@@ -2869,7 +2871,7 @@ class AutoBreak:
 
         # Write the results
         writer      = pandas.ExcelWriter(self.autobreak_excel_file,
-                                         engine = 'openpyxl')
+                                         engine='openpyxl')
 
         # Create data frames
         summary_frame = pandas.DataFrame(np.array(self.final_summary_data))
@@ -2878,12 +2880,12 @@ class AutoBreak:
         staples_frame  = pandas.DataFrame(np.array(self.final_cvs_rows))
 
         # Write summary data
-        summary_frame.to_excel(writer, sheet_name = str('final'), header=None, index=False)
+        summary_frame.to_excel(writer, sheet_name=str('final'), header=None, index=False)
 
         # Write staples data
-        staples_frame.to_excel(writer, sheet_name = str('final'), header=cvs_header, index=False, startrow=10)
+        staples_frame.to_excel(writer, sheet_name=str('final'), header=cvs_header, index=False, startrow=10)
 
-         # Save writer and close
+        # Save writer and close
         writer.save()
         writer.close()
 
@@ -2942,12 +2944,14 @@ class AutoBreak:
         Compare complete solutions
         '''
         # Sort complete solutions
-        self.sorted_complete_solutions = sorted(list(self.complete_solutions.values()), key=lambda solution: solution.total_score, reverse=True)
+        self.sorted_complete_solutions = sorted(list(self.complete_solutions.values()),
+                                                key=lambda solution: solution.total_score, reverse=True)
 
         # Print the scores
         for complete_solution in self.sorted_complete_solutions:
             # Print total score and crossover penalty for the best solution
-            tqdm.write('Complete solutions: Offset: %-5d - TotalProb:%-5.2f - TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
+            tqdm.write('Complete solutions: Offset: %-5d - TotalProb:%-5.2f - TotalScore:%-5.2f' +
+                       ' - TotalCrossoverPenalty:%-3d' %
                        (complete_solution.sequence_offset, complete_solution.total_prob,
                         complete_solution.total_score, complete_solution.total_penalty))
 
@@ -2964,7 +2968,7 @@ class AutoBreak:
             self.best_sequence_offset = self.best_complete_solution.sequence_offset
 
         # Apply the offset and shift sequence
-        self.origami.apply_sequence(offset)
+        self.origami.apply_sequence(self.best_sequence_offset)
 
     def break_best_complete_solution(self):
         '''
@@ -3021,7 +3025,7 @@ class AutoBreak:
             score += np.product(score_list)
         return score
 
-    def _optimize_structure(self,edge):
+    def _optimize_structure(self, edge):
         '''
         Optimization function for structure
         '''
@@ -3150,13 +3154,12 @@ class BreakEdge:
 
         '''
 
-        # Check if the oligo group exists 
+        # Check if the oligo group exists
         # Doesn't exist if the clustering is not performed
 
         oligo_group_key = -1
         if self.current_break.oligo_group:
             oligo_group_key = self.current_break.oligo_group.key
-
 
         cvs_row =      ['.'.join([str(x) for x in self.current_break.oligo.key]),
                         oligo_group_key,
@@ -3217,7 +3220,6 @@ class BreakEdge:
 
         # Initialize sequence and dna list
         self.sequence_list  = []
-        
         self.ssDNA_seq_list = []
         self.dsDNA_seq_list = []
 
@@ -3247,10 +3249,10 @@ class BreakEdge:
 
         # Iterate over sequence list
         if len(self.sequence_list) == 1:
-            start_point  = self.current_break.break_point_adjusted+1
-            final_point  = self.next_break.break_point_adjusted+1
-            dna_sequence = self.current_break.strand.dna[start_point:final_point]
-            position_list= self.current_break.strand.scaffoldPos[start_point:final_point]
+            start_point   = self.current_break.break_point_adjusted+1
+            final_point   = self.next_break.break_point_adjusted+1
+            dna_sequence  = self.current_break.strand.dna[start_point:final_point]
+            position_list = self.current_break.strand.scaffoldPos[start_point:final_point]
 
             if len(position_list) > 0:
                 self.ssDNA_pos_list.append(position_list)
@@ -3258,26 +3260,26 @@ class BreakEdge:
                 self.ssDNA_seq_list.append(dna_sequence)
         else:
             # 1. Get the 5' sequence
-            start_point  = self.current_break.break_point_adjusted+1
-            final_point  = self.current_break.sequence.strHigh+1
-            dna_sequence = self.current_break.strand.dna[start_point:final_point]
-            position_list= self.current_break.strand.scaffoldPos[start_point:final_point]
+            start_point   = self.current_break.break_point_adjusted+1
+            final_point   = self.current_break.sequence.strHigh+1
+            dna_sequence  = self.current_break.strand.dna[start_point:final_point]
+            position_list = self.current_break.strand.scaffoldPos[start_point:final_point]
 
             if len(position_list) > 0:
                 self.ssDNA_pos_list.append(position_list)
             if len(dna_sequence) > 0:
                 self.ssDNA_seq_list.append(dna_sequence)
-            
+
             # 2. Get the sequences in between
             for sequence in self.sequence_list[1:-1]:
                 self.ssDNA_pos_list.append(sequence.scaffoldPos)
                 self.ssDNA_seq_list.append(sequence.dna)
 
             # 3. Get the 3' sequence
-            start_point  = self.next_break.sequence.strLow
-            final_point  = self.next_break.break_point_adjusted+1
-            dna_sequence = self.next_break.strand.dna[start_point:final_point]
-            position_list= self.next_break.strand.scaffoldPos[start_point:final_point]
+            start_point   = self.next_break.sequence.strLow
+            final_point   = self.next_break.break_point_adjusted+1
+            dna_sequence  = self.next_break.strand.dna[start_point:final_point]
+            position_list = self.next_break.strand.scaffoldPos[start_point:final_point]
 
             if len(position_list) > 0:
                 self.ssDNA_pos_list.append(position_list)
@@ -3289,7 +3291,7 @@ class BreakEdge:
         self.dsDNA_pos_list = [list(filter(lambda x: x, pos_list)) for pos_list in self.ssDNA_pos_list]
 
         # Replace all empty characters in ssDNA seq list with ?
-        self.ssDNA_seq_list = [dna.replace(" ","?") for dna in self.ssDNA_seq_list]
+        self.ssDNA_seq_list = [dna.replace(" ", "?") for dna in self.ssDNA_seq_list]
 
         # Remove empty lists from positions list
         self.dsDNA_pos_list = list(filter(lambda x: len(x), self.dsDNA_pos_list))
@@ -3299,7 +3301,7 @@ class BreakEdge:
 
         # Determine Tm
         self.Tm_list       = np.array([utilities.sequence_to_Tm(dna) for dna in self.dsDNA_seq_list])
-        
+
         # 1. Determine intrinsic free energies
         self.dG_intrin_list = []
         self.dH_intrin_list = []
@@ -3310,7 +3312,7 @@ class BreakEdge:
              dHintrin,
              dSintrin) = utilities.sequence_to_dG(dna, temperature_kelvin)
 
-           # Add free energies to the lists
+            # Add free energies to the lists
             self.dG_intrin_list.append(dGintrin)
             self.dH_intrin_list.append(dHintrin)
             self.dS_intrin_list.append(dSintrin)
@@ -3341,8 +3343,8 @@ class BreakEdge:
         self.dS_inter_list = np.array(self.dS_inter_list)
 
         # 3. Get free energy due to concentration
-        dGconc,dSconc = utilities.conc_to_dG(temperature_kelvin)
-        
+        dGconc, dSconc = utilities.conc_to_dG(temperature_kelvin)
+
         self.dG_conc = dGconc
         self.dS_conc = dSconc
 
@@ -3356,7 +3358,7 @@ class BreakEdge:
 
         # 5. Determine probabilities
         self.edge_prob = np.exp(-self.dG_total/self.RT)/(1.0+np.exp(-self.dG_total/self.RT))
-        
+
         # 6. Determine log-probabilities
         self.edge_logprob = np.log(self.edge_prob)
 
@@ -3829,11 +3831,13 @@ def parse_optim_function(function_input):
 
     return functions
 
+
 def parse_sequence_position(key_input):
     '''
     Parse sequence position
     '''
     return tuple([int(x) for x in key_input.split('.')])
+
 
 def main():
 
@@ -3859,7 +3863,7 @@ def main():
     parser.add_argument("-pos",   "--position", type=str, default=None,
                         help="Sequence start position")
 
-    parser.add_argument("-offset","--offset", type=int, default=None,
+    parser.add_argument("-offset", "--offset", type=int, default=None,
                         help="Sequence offset")
 
     parser.add_argument("-sort", "--sort", action='store_true',
@@ -3924,7 +3928,7 @@ def main():
                  'permute': args.permute,
                  'writeall': args.writeall,
                  'sort': args.sort,
-                 'circularize':args.circularize}
+                 'circularize': args.circularize}
 
     # Check if offset and/or offset is provided
     if args.position or args.offset:
@@ -3932,7 +3936,7 @@ def main():
 
     # Initialize start position and sequence offsets
     start_offset = -1
-    start_pos    = (-1,-1)
+    start_pos    = (-1, -1)
     if args.offset:
         start_offset = args.offset
     if args.position:
@@ -4058,6 +4062,7 @@ def main():
 
     # Write sequence file to output directory
     new_autobreak.copy_sequence_file()
+
 
 if __name__ == "__main__":
     main()
