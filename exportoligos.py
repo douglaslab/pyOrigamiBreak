@@ -115,7 +115,7 @@ def write_oligos(oligos, stocks, json_files, fname, plate_header=''):
 
     # Stock well positions
     stock_positions = {1: {'startwell': ('Plate%s-%d' % (plate_header, 1), 'A1'),
-                           'endwell' : ('Plate%s-%d' % (plate_header, 1), 'A1')}}
+                           'endwell': ('Plate%s-%d' % (plate_header, 1), 'A1')}}
 
     # Aggregate sheet
     ws_ALL = wb.create_sheet(title='PlatesAll')

@@ -8,7 +8,6 @@
 from tqdm import tqdm
 from cadnano.document import Document
 from matplotlib import cm
-from operator import itemgetter
 from shutil import copyfile
 
 import numpy as np
@@ -1926,7 +1925,8 @@ class Origami:
                                                      oligo.null_break.direction)
             oligo.null_break.current_nucleotide   = self.get_current_nucleotide(oligo.null_break.key)
             oligo.null_break.next_nucleotide      = self.get_next_nucleotide(oligo.null_break.key)
-            oligo.null_break.sequence             = current_strand.sequences[0] if len(current_strand.sequences) > 0 else None
+            oligo.null_break.sequence             = (current_strand.sequences[0] if len(current_strand.sequences) > 0
+                                                     else None)
             oligo.null_break.oligo                = oligo
             oligo.null_break.order_id             = order_id_counter
             oligo.null_break.origami              = self
