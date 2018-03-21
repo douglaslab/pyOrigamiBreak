@@ -2950,10 +2950,10 @@ class AutoBreak:
         # Print the scores
         for complete_solution in self.sorted_complete_solutions:
             # Print total score and crossover penalty for the best solution
-            tqdm.write('Complete solutions: Offset: %-5d - TotalProb:%-5.2f - TotalScore:%-5.2f' +
-                       ' - TotalCrossoverPenalty:%-3d' %
-                       (complete_solution.sequence_offset, complete_solution.total_prob,
-                        complete_solution.total_score, complete_solution.total_penalty))
+            tqdm.write('Complete solutions: Offset: %-5d' % (complete_solution.sequence_offset) +
+                       ' - TotalProb:%-5.2f' % (complete_solution.total_prob) +
+                       ' - TotalScore:%-5.2f' % (complete_solution.total_score) +
+                       ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty))
 
         # Assign best solution
         if len(self.sorted_complete_solutions) > 0:
