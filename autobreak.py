@@ -3370,10 +3370,17 @@ class BreakEdge:
         self.dsDNA_length_list = np.array([len(dna) for dna in self.dsDNA_seq_list])
 
         # Determine the edge weights
-        self.edge_maxTm  = max(self.Tm_list)
+        if len(self.Tm_list) > 0:
+            self.edge_maxTm = max(self.Tm_list)
+        else:
+            self.edge_maxTm = 0
 
         # Length parameters
-        self.edge_maxseq = max(self.dsDNA_length_list)
+        if len(self.dsDNA_length_list) > 0:
+            self.edge_maxseq = max(self.dsDNA_length_list)
+        else:
+            self.edge_maxseq = 0
+
         self.edge_num14  = np.sum(self.dsDNA_length_list >= 14)
         self.edge_has14  = int(self.edge_num14 > 0)
 
