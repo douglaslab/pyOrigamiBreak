@@ -3108,6 +3108,7 @@ class BreakEdge:
 
         # state parameters
         self.active        = True
+        self.valid         = True
 
         # Length parameters
         self.edge_has14    = None
@@ -3195,8 +3196,10 @@ class BreakEdge:
         '''
         Determine if edge is valid
         '''
-        return self.active and (not self.current_break.dont_break and not self.next_break.dont_break and not
-                                self.current_break.dont_break_temp and not self.next_break.dont_break_temp)
+        return self.valid and self.active and (not self.current_break.dont_break and
+                                               not self.next_break.dont_break and
+                                               not self.current_break.dont_break_temp and
+                                               not self.next_break.dont_break_temp)
 
     def make_connection(self, from_break, to_break):
         '''
@@ -3397,6 +3400,10 @@ class BreakEdge:
 
         # Set edge weight
         self.set_edge_weight()
+
+        # Check dsDNA list to decide on the validity of edge
+        if len(self.dsDNA_length_list) == 0:
+            self.valid = False
 
     def make_loop_edge(self):
         '''
