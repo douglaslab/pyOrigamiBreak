@@ -280,12 +280,22 @@ def read_oligos(cadnano_part, scaffold_sequence):
         new_oligo.idx5p     = strand5p.idx5Prime()
         new_oligo.idx3p     = strand3p.idx3Prime()
         new_oligo.color     = oligo.getColor()
-        new_oligo.sequence  = oligo.sequence().replace(' ', '?')
+        new_oligo.sequence  = ''
+
+        # Get the strand generator
+        generator           = oligo.strand5p().generator3pStrand()
+        for strand in generator:
+            if strand.length() !=  len(strand.sequence()):
+                new_oligo.sequence += strand.length()*'?'
+            else:
+                new_oligo.sequence += strand.sequence().replace(' ', '?')
+
         new_oligo.key       = '-'.join([str(new_oligo.vh5p),
                                         str(new_oligo.idx5p),
                                         str(new_oligo.vh3p),
                                         str(new_oligo.idx3p),
                                         new_oligo.sequence])
+
         new_oligo.startkey  = '%d[%d]' % (new_oligo.vh5p, new_oligo.idx5p)
         new_oligo.finishkey = '%d[%d]' % (new_oligo.vh3p, new_oligo.idx3p)
 
