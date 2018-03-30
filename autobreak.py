@@ -3933,6 +3933,7 @@ def main():
     start_offset            = args.offset
     shuffle_oligos          = not args.sort
     circularize             = args.circularize
+    npermute                = args.npermute
 
     # Create args dictionary
     args_dict = {'input': args.input,
@@ -4055,7 +4056,7 @@ def main():
         new_autobreak.create_results_excel_file()
 
         # Run the permutation protocol
-        new_autobreak.permute_scaffold_sequence()
+        new_autobreak.permute_scaffold_sequence(npermute)
 
         # Compare complete solutions
         new_autobreak.compare_complete_solutions()
