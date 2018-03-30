@@ -2679,7 +2679,7 @@ class AutoBreak:
         # Update graph edge weights
         self.update_edge_weights()
 
-    def permute_scaffold_sequence(self):
+    def permute_scaffold_sequence(self, nitr=100):
         '''
         Permute scaffold sequence
         '''
@@ -2687,6 +2687,9 @@ class AutoBreak:
         final_offset = 1
         if self.permute_sequence:
             final_offset = len(self.origami.scaffold_sequence)
+            # Check the number of permutation iterations allowed
+            if nitr < final_offset:
+                final_offset = nitr
 
         for offset in tqdm(range(0, final_offset), desc='Permutation loop', leave=False,
                            dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}'):
@@ -3898,6 +3901,9 @@ def main():
     parser.add_argument("-permute",   "--permute",  action='store_true',
                         help="Permute sequence")
 
+    parser.add_argument("-npermute",  "--npermute",  type=int,
+                        help="Number of permutation iterations", default=100)
+
     parser.add_argument("-writeall",   "--writeall",  action='store_true',
                         help="Write all results")
 
@@ -3940,6 +3946,7 @@ def main():
                  'verbose': args.verbose,
                  'seed': args.seed,
                  'permute': args.permute,
+                 'npermute': args.npermute,
                  'writeall': args.writeall,
                  'sort': args.sort,
                  'circularize': args.circularize}
