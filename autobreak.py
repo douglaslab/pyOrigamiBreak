@@ -1029,6 +1029,16 @@ class Origami:
         self.sequence_start_pos = None
         self.current_start_pos  = None
 
+    def warn_circular_scaffold(self):
+        '''
+        Warn user about adding a break in a scaffold
+        '''
+        cadnano_oligos = self.part.oligos()
+        cadnano_oligos = sorted(cadnano_oligos, key=lambda x: x.length(), reverse=True)
+        if cadnano_oligos[0].isCircular():
+            print('Warning: Scaffold is circular.' +
+                  ' It is recommended to add a break in scaffold before applying autobreak.')
+
     def circularize_scaffold(self):
         '''
         Circularize scaffold
@@ -1376,8 +1386,6 @@ class Origami:
             direction =  1
         else:
             direction = -1
-
-        print(vh, idx, direction)
 
         # Break the scaffold at start position
         self.split_cadnano_strand(vh, idx-direction, direction)
@@ -2279,11 +2287,6 @@ class Origami:
                 self.scaffolds.append(oligo)
             else:
                 self.staples.append(oligo)
-
-        # Check if the scaffold is circular
-        if self.scaffolds[0].isCircular():
-            print('Warning: Scaffold is circular.' +
-                  ' It is recommended to add a break in scaffold before applying autobreak!')
 
     def read_sequence(self):
         '''
@@ -4099,6 +4102,9 @@ def main():
 
     # Write input arguments
     new_autobreak.write_input_args()
+
+    # Check if the scaffold is circular
+    new_origami.warn_circular_scaffold()
 
     # Check if it is a read-only or autobreak run
     if not read_only:
