@@ -1026,6 +1026,8 @@ class Origami:
 
         # DNA Sequence parameters
         self.sequence_offset = 0
+        self.sequence_start_pos = None
+        self.current_start_pos  = None
 
     def circularize_scaffold(self):
         '''
@@ -1036,7 +1038,8 @@ class Origami:
         strand3p = self.scaffolds[0].strand3p()
 
         # Set sequence start position before circularizing
-        self.sequence_start_pos = (strand5p.idNum(), strand5p.idx5Prime())
+        if self.sequence_start_pos is None:
+            self.sequence_start_pos = (strand5p.idNum(), strand5p.idx5Prime())
 
         # Connect strand5p and strand3p
         if self.circularize and not self.scaffolds[0].isCircular():
@@ -1048,6 +1051,13 @@ class Origami:
 
             # Read cadnano oligos again
             self.get_oligos()
+
+        # Get the new start position for the scaffold
+        strand5p = self.scaffolds[0].strand5p()
+        strand3p = self.scaffolds[0].strand3p()
+
+        # Get current start position
+        self.current_start_pos = (strand5p.idNum(), strand5p.idx5Prime())
 
         # Set circularize oligo False so that this function is excuted only once
         self.circularize = False
@@ -1117,7 +1127,8 @@ class Origami:
         '''
         Set sequence start position in (vh, idx)
         '''
-        self.sequence_start_pos = key
+        if key != (-1, -1):
+            self.sequence_start_pos = key
 
     def set_sequence_start_offset(self, offset=0):
         '''
@@ -1127,6 +1138,21 @@ class Origami:
             self.sequence_start_offset = offset
         else:
             self.sequence_start_offset = 0
+
+    def get_scaffold_distance(self, current_key, next_key):
+        '''
+        Get scaffold distance
+        Distance is between the minimum positions in the positions list
+        '''
+        current_vh, current_idx = current_key
+        next_vh, next_idx = next_key
+        current_positions = self.get_scaffold_positions(current_vh, current_idx)
+        next_positions = self.get_scaffold_positions(next_vh, next_idx)
+
+        if len(current_positions) == 0 or len(next_positions) == 0:
+            return None
+        else:
+            return min(next_positions) - min(current_positions)
 
     def get_scaffold_positions(self, vh, idx):
         '''
@@ -1337,6 +1363,24 @@ class Origami:
 
         # Assign part
         self.part = self.doc.activePart()
+
+    def split_scaffold(self):
+        '''
+        Split scaffold at the starting position - (direction)
+        '''
+
+        (vh, idx) = self.sequence_start_pos
+
+        # Determine direction
+        if vh % 2 == 0:
+            direction =  1
+        else:
+            direction = -1
+
+        print(vh, idx, direction)
+
+        # Break the scaffold at start position
+        self.split_cadnano_strand(vh, idx-direction, direction)
 
     def assign_strands_dna(self):
         '''
@@ -2236,6 +2280,11 @@ class Origami:
             else:
                 self.staples.append(oligo)
 
+        # Check if the scaffold is circular
+        if self.scaffolds[0].isCircular():
+            print('Warning: Scaffold is circular.' +
+                  ' It is recommended to add a break in scaffold before applying autobreak!')
+
     def read_sequence(self):
         '''
         Read sequence file
@@ -2619,7 +2668,7 @@ class AutoBreak:
         Write cadnano part to json
         '''
         self.origami.doc.writeToFile(self.json_legacy_output, legacy=True)
-        self.origami.doc.writeToFile(self.json_cn25_output, legacy=False)
+        self.origami.doc.writeToFile(self.json_cn25_output,   legacy=False)
 
     def set_pick_method(self, pick_method='random'):
         '''
@@ -2961,6 +3010,19 @@ class AutoBreak:
         # Assign best solution
         if len(self.sorted_complete_solutions) > 0:
             self.best_complete_solution = self.sorted_complete_solutions[0]
+
+    def correct_complete_solution_offsets(self):
+        '''
+        Correct complete solution offsets based on the difference between actualy start pos
+        and the current start positions
+        '''
+        offset_difference = self.origami.get_scaffold_distance(self.origami.current_start_pos,
+                                                               self.origami.sequence_start_pos)
+
+        # Subtract offset difference from the offsets
+        for key in self.complete_solutions:
+            complete_solution = self.complete_solutions[key]
+            complete_solution.sequence_offset -= offset_difference
 
     def set_best_sequence_offset(self):
         '''
@@ -4058,6 +4120,9 @@ def main():
         # Run the permutation protocol
         new_autobreak.permute_scaffold_sequence(npermute)
 
+        # Correct sequence offsets
+        new_autobreak.correct_complete_solution_offsets()
+
         # Compare complete solutions
         new_autobreak.compare_complete_solutions()
 
@@ -4078,6 +4143,9 @@ def main():
 
     # Export initial scores
     new_autobreak.export_initial_scores()
+
+    # Split scaffold
+    new_origami.split_scaffold()
 
     # Write result to json
     new_autobreak.write_final_part_to_json()
