@@ -295,6 +295,7 @@ class CompleteBreakSolution:
         self.total_score         = 0
         self.total_penalty       = 0
         self.sequence_offset     = 0
+        self.corrected_offset    = 0
         self.complete            = True
         self.cvs_writer_rows     = []
 
@@ -384,7 +385,8 @@ class CompleteBreakSolution:
                         ['TotalScore', self.total_score],
                         ['TotalPenalty', self.total_penalty],
                         ['Complete', int(self.complete)],
-                        ['SequenceOffset', self.sequence_offset]]
+                        ['SequenceOffset', self.sequence_offset],
+                        ['CorrectedOffset', self.corrected_offset]]
 
         return summary_rows
 
@@ -1226,6 +1228,18 @@ class Origami:
         '''
         self.oligos['staple'].sort(key=lambda x: x.length)
 
+    def sort_staples_by_key(self):
+        '''
+        Sort staples by key
+        '''
+        self.oligos['staple'].sort(key=lambda x: x.key)
+
+    def sort_breaks_by_key(self):
+        '''
+        Sort breaks by key
+        '''
+        self.breaks.sort(key=lambda x: x.key)
+
     def set_sequence_file(self, sequence_file=None):
         '''
         Set sequence filename
@@ -1284,9 +1298,6 @@ class Origami:
         # Build scaffold map
         self.build_scaffold_map()
 
-        # Set sequence offset
-        self.set_sequence_offset(self.sequence_start_pos)
-
         # Apply sequence
         self.apply_sequence(self.sequence_offset)
 
@@ -1298,6 +1309,9 @@ class Origami:
 
         # Sort staple by length
         self.sort_staples_by_length()
+
+        # Sort staples by key
+        self.sort_staples_by_key()
 
         # Generate staple crossovers
         self.generate_staple_crossovers()
@@ -1401,6 +1415,13 @@ class Origami:
 
             while current_strand:
                 current_strand.dna = current_strand.cadnano_strand.sequence()
+
+                # Current cadnano2.5 version doesnt assign sequences for strands
+                # with no scaffold in the same virtual helix
+                # Assign the proper empty length sequence in case it is not assigned
+
+                if len(current_strand.dna) != current_strand.totalLength:
+                    current_strand.dna = ' '*current_strand.totalLength
 
                 # Update current strand
                 current_strand = current_strand.next_strand
@@ -2158,6 +2179,9 @@ class Origami:
         # Group key
         group_key = 0
 
+        # Sort breaks by key
+        self.sort_breaks_by_key()
+
         for current_break in self.breaks:
             if not current_break.visited:
                 # Create new oligo group
@@ -2180,6 +2204,10 @@ class Origami:
                 # Assign breaks and oligos to oligo group
                 new_oligo_group.breaks = list(visited_breaks)
                 new_oligo_group.oligos = list(visited_oligos)
+
+                # Sort group breaks and oligos by key
+                new_oligo_group.breaks.sort(key=lambda x: x.key)
+                new_oligo_group.oligos.sort(key=lambda x: x.key)
 
                 # Assign group key
                 new_oligo_group.key    = group_key
@@ -2270,7 +2298,13 @@ class Origami:
         Get oligos
         '''
         self.cadnano_oligos = self.part.oligos()
-        self.cadnano_oligos = sorted(self.cadnano_oligos, key=lambda x: x.length(), reverse=True)
+
+        # In place sort based on vh and idx5p and oligo direction
+        self.cadnano_oligos = sorted(self.cadnano_oligos,
+                                     key=lambda x: (x.length(),
+                                                    x.strand5p().idNum(),
+                                                    x.strand5p().idx5Prime(),
+                                                    int(x.strand5p().isForward())), reverse=True)
 
         # Initialize the scaffolds and staples
         self.scaffolds = []
@@ -2431,7 +2465,10 @@ class AutoBreak:
                                                 'maxseq': self._optimize_maxseq,
                                                 'glength': self._gauss_length,
                                                 'gmaxseq': self._gauss_maxseq,
-                                                'gTm': self._gauss_Tm}
+                                                'gTm': self._gauss_Tm,
+                                                'llength': self._log_length,
+                                                'lmaxseq': self._log_maxseq,
+                                                'lTm': self._log_Tm}
         # Set optimization params
         self.optim_params_dict              = {'14': [],
                                                '16': [],
@@ -2442,7 +2479,10 @@ class AutoBreak:
                                                'maxseq': [self.optim_maxseq_length],
                                                'glength': [self.optim_length_mean, self.optim_length_tolerance],
                                                'gmaxseq': [self.optim_maxseq_mean, self.optim_maxseq_tolerance],
-                                               'gTm': [self.optim_Tm_mean, self.optim_Tm_tolerance]}
+                                               'gTm': [self.optim_Tm_mean, self.optim_Tm_tolerance],
+                                               'llength': [self.optim_length_mean, self.optim_length_tolerance],
+                                               'lmaxseq': [self.optim_maxseq_mean, self.optim_maxseq_tolerance],
+                                               'lTm': [self.optim_Tm_mean, self.optim_Tm_tolerance]}
 
         # Verbose output
         self.verbose_output                 = False
@@ -2471,6 +2511,7 @@ class AutoBreak:
         # Print the scores
         for complete_solution in self.sorted_complete_solutions:
             self.results_summary.append([complete_solution.sequence_offset,
+                                         complete_solution.corrected_offset,
                                          complete_solution.total_prob,
                                          complete_solution.total_score,
                                          complete_solution.total_penalty])
@@ -2496,7 +2537,7 @@ class AutoBreak:
         summary_frame  = pandas.DataFrame(results_summary)
 
         # Create summary header
-        summary_header = ['SequenceOffset', 'TotalProb', 'TotalScore', 'TotalPenalty']
+        summary_header = ['SequenceOffset', 'CorrectedOffset', 'TotalProb', 'TotalScore', 'TotalPenalty']
 
         # Write summary data
         summary_frame.to_excel(writer, sheet_name='summary', header=summary_header, index=False)
@@ -2525,6 +2566,12 @@ class AutoBreak:
         '''
         wb = openpyxl.Workbook()
         wb.save(self.results_excel_file)
+
+    def set_lower_bound(self, min_length=21):
+        '''
+        Set lower bound
+        '''
+        self.LOWER_BOUND = min_length
 
     def set_write_all_results(self, write_all_results=False):
         '''
@@ -3006,6 +3053,7 @@ class AutoBreak:
         for complete_solution in self.sorted_complete_solutions:
             # Print total score and crossover penalty for the best solution
             tqdm.write('Complete solutions: Offset: %-5d' % (complete_solution.sequence_offset) +
+                       ' - CorrectedOffset: %-5d' % (complete_solution.corrected_offset) +
                        ' - TotalProb:%-5.2f' % (complete_solution.total_prob) +
                        ' - TotalScore:%-5.2f' % (complete_solution.total_score) +
                        ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty))
@@ -3025,7 +3073,14 @@ class AutoBreak:
         # Subtract offset difference from the offsets
         for key in self.complete_solutions:
             complete_solution = self.complete_solutions[key]
-            complete_solution.sequence_offset -= offset_difference
+            complete_solution.corrected_offset = (complete_solution.sequence_offset +
+                                                  offset_difference) % self.origami.scaffolds[0].length()
+    def set_corrected_offset(self):
+        '''
+        Set corrected offset
+        '''
+        offset_difference = self.origami.get_scaffold_distance(self.origami.current_start_pos,
+                                                               self.origami.sequence_start_pos)
 
     def set_best_sequence_offset(self):
         '''
@@ -3049,6 +3104,9 @@ class AutoBreak:
             # Break group solution
             if self.best_complete_solution.group_solutions[key]:
                 self.best_complete_solution.group_solutions[key].break_group_solution()
+
+        # Assign sequence offset to best sequence offset
+        self.origami.sequence_offset = self.best_complete_solution.sequence_offset
 
     def set_score_func(self, func_args):
         '''
@@ -3157,6 +3215,29 @@ class AutoBreak:
 
         return np.exp(-(edge.edge_maxseq -
                       self.optim_params_dict['gmaxseq'][0])**2/self.optim_params_dict['gmaxseq'][1]**2)
+
+    def _log_length(self, edge):
+        '''
+        Optimization function gauss length
+        '''
+
+        return (-(edge.edge_length -
+                self.optim_params_dict['glength'][0])**2/self.optim_params_dict['glength'][1]**2)
+
+    def _log_Tm(self, edge):
+        '''
+        Optimization function gauss Tm
+        '''
+
+        return (-(edge.edge_maxTm-self.optim_params_dict['gTm'][0])**2/self.optim_params_dict['gTm'][1]**2)
+
+    def _log_maxseq(self, edge):
+        '''
+        Optimization function gauss Tm
+        '''
+
+        return (-(edge.edge_maxseq -
+                self.optim_params_dict['gmaxseq'][0])**2/self.optim_params_dict['gmaxseq'][1]**2)
 
 
 class BreakEdge:
@@ -3942,26 +4023,20 @@ def main():
     parser.add_argument("-seq",   "--sequence", type=str, default=None,
                         help="Sequence file in txt")
 
-    parser.add_argument("-pos",   "--position", type=str, default=None,
-                        help="Sequence start position")
-
-    parser.add_argument("-offset", "--offset", type=int, default=None,
-                        help="Sequence offset")
-
     parser.add_argument("-sort", "--sort", action='store_true',
                         help="Sort oligos for stepwise optimization.")
 
     parser.add_argument("-nsol",   "--nsol",     type=int,
                         help="Number of solutions", default=10)
 
+    parser.add_argument("-minlength",   "--minlength",     type=int,
+                        help="Minimum staple length", default=21)
+
     parser.add_argument("-dontb",   "--dontbreak",  type=int,
                         help="Dont break oligos less than the length specified", default=0)
 
     parser.add_argument("-v",   "--verbose",  action='store_true',
                         help="Verbose output")
-
-    parser.add_argument("-circularize", "--circularize",  action='store_true',
-                        help="Circularize scaffold")
 
     parser.add_argument("-permute",   "--permute",  action='store_true',
                         help="Permute sequence")
@@ -3995,9 +4070,7 @@ def main():
     random_seed             = args.seed
     permute_sequence        = args.permute
     write_all_results       = args.writeall
-    start_offset            = args.offset
     shuffle_oligos          = not args.sort
-    circularize             = args.circularize
     npermute                = args.npermute
 
     # Create args dictionary
@@ -4008,26 +4081,14 @@ def main():
                  'score': args.score,
                  'func': args.func,
                  'nsol': args.nsol,
+                 'minlength': args.minlength,
                  'dontb': args.dontbreak,
                  'verbose': args.verbose,
                  'seed': args.seed,
                  'permute': args.permute,
                  'npermute': args.npermute,
                  'writeall': args.writeall,
-                 'sort': args.sort,
-                 'circularize': args.circularize}
-
-    # Check if offset and/or offset is provided
-    if args.position or args.offset:
-        permute_sequence = False
-
-    # Initialize start position and sequence offsets
-    start_offset = -1
-    start_pos    = (-1, -1)
-    if args.offset:
-        start_offset = args.offset
-    if args.position:
-        start_pos    = parse_sequence_position(args.position)
+                 'sort': args.sort}
 
     # Check if input file exists
     if not os.path.isfile(input_filename):
@@ -4082,20 +4143,17 @@ def main():
     # Set optimization temperature
     new_autobreak.set_temperature_parameter()
 
+    # Set lower bound for oligo lengths
+    new_autobreak.set_lower_bound(args.minlength)
+
     # Initialize origami object
     new_origami.initialize(input_filename)
 
     # Set sequence filename
     new_origami.set_sequence_file(sequence_filename)
 
-    # Set sequence start position
-    new_origami.set_sequence_start_pos(start_pos)
-
-    # Set sequence start offset
-    new_origami.set_sequence_start_offset(start_offset)
-
     # Set circularize
-    new_origami.set_circularize(circularize)
+    new_origami.set_circularize(True)
 
     # Define json output
     new_autobreak.define_output_files()

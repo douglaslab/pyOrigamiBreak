@@ -285,7 +285,7 @@ def read_oligos(cadnano_part, scaffold_sequence):
         # Get the strand generator
         generator           = oligo.strand5p().generator3pStrand()
         for strand in generator:
-            if strand.length() !=  len(strand.sequence()):
+            if strand.totalLength() != len(strand.sequence()):
                 new_oligo.sequence += strand.length()*'?'
             else:
                 new_oligo.sequence += strand.sequence().replace(' ', '?')
@@ -345,7 +345,7 @@ def main():
     scaffold_sequence = scaffold_sequence[args.offset:]+scaffold_sequence[:args.offset]
 
     # Define output file
-    head, tail       = os.path.split(os.path.abspath(json_files[0]))
+    head, tail  = os.path.split(os.path.abspath(json_files[0]))
     xlsx_output = head+'/oligos_96well.xlsx'
 
     # Initialize cadnano
@@ -360,6 +360,12 @@ def main():
         # Get json file
         json_input = json_files[i]
 
+        # Define json output
+        head, ext  = os.path.splitext(os.path.abspath(json_input))
+
+        # Json output
+        json_output = head+'_export.json'
+
         # Read cadnano input file
         doc.readFile(json_input)
 
@@ -368,6 +374,9 @@ def main():
 
         # Get staples
         staples = read_oligos(part, scaffold_sequence)
+
+        # Write json output
+        doc.writeToFile(json_output, legacy=False)
 
         # Add bit key to staples and add to all staples list
         for key in staples:
