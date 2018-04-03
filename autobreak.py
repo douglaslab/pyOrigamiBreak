@@ -453,11 +453,11 @@ class OligoGroup:
         '''
         random.shuffle(self.oligos)
 
-    def sort_oligos_by_length(self):
+    def sort_oligos_by_length(self, reverse=True):
         '''
         Sort oligos by length
         '''
-        self.oligos.sort(key=lambda x: x.length, reverse=True)
+        self.oligos.sort(key=lambda x: x.length, reverse=reverse)
 
     def reset_temp_neighbor_constraints(self):
         '''
@@ -682,6 +682,14 @@ class Strand:
         # Make the breaks array and sort them
         self.fwd_breaks = np.array(sorted(self.fwd_breaks), dtype=int)
         self.rev_breaks = np.array(sorted(self.rev_breaks), dtype=int) + int(self.length)
+
+        # All values need to be between 0 and length
+        self.fwd_breaks = list(filter(lambda x: x >= 0 and x < self.length, self.fwd_breaks))
+        self.rev_breaks = list(filter(lambda x: x >= 0 and x < self.length, self.rev_breaks))
+
+        # Convert the lists to int array
+        self.fwd_breaks = np.array(sorted(self.fwd_breaks), dtype=int)
+        self.rev_breaks = np.array(sorted(self.rev_breaks), dtype=int)
 
         # Combine the two arrays
         self.all_breaks = np.sort(np.unique(np.hstack((self.fwd_breaks, self.rev_breaks))))
@@ -2061,6 +2069,9 @@ class Origami:
                     # Assign sequence to break object
                     new_break.sequence    = current_strand.sequences[sequence_id] if sequence_id >= 0 else None
 
+                    if new_break.sequence is None:
+                        print(new_break.key, current_strand.length, break_position, current_strand.sequence_idxLows)
+
                     # Assign strand to new break
                     new_break.strand      = current_strand
 
@@ -2846,7 +2857,7 @@ class AutoBreak:
                                 dynamic_ncols=True, bar_format='{l_bar}{bar}'):
 
             # Sort oligos by length
-            oligo_group.sort_oligos_by_length()
+            oligo_group.sort_oligos_by_length(reverse=True)
 
             # Create solutions via stepwise approach
             oligo_group.create_stepwise_oligo_solutions(self.NUM_OLIGO_SOLUTIONS, self.NUM_GLOBAL_SOLUTIONS,
