@@ -1017,7 +1017,7 @@ class Origami:
         '''
 
         self.json_input     = None
-        self.oligos         = None
+        self.oligos         = {'scaffold': [], 'staple': []}
         self.oligo_map      = {}
         self.break_edge_map = {}
         self.oligo_groups   = None
@@ -1035,7 +1035,7 @@ class Origami:
         self.dont_break_very_long_staples = False
 
         # DNA Sequence parameters
-        self.sequence_offset = 0
+        self.sequence_offset    = None
         self.sequence_start_pos = None
         self.current_start_pos  = None
 
@@ -1127,15 +1127,21 @@ class Origami:
             if oligo.length < maximum_length:
                 oligo.dont_break = True
 
-    def set_sequence_offset(self, key):
+    def set_sequence_offset(self):
         '''
-        Set sequence offset for scaffold from position key (vh,idx)
-        '''
-        # Determine the sequence offset
-        self.sequence_offset = self.sequence_start_offset
+        Set sequence offset based on the difference between
+        scaffold_start_pos and current_start_pos
 
-        if key in self.key2scaffold:
-            self.sequence_offset += (-self.key2scaffold[key][0]+1)
+        '''
+        # Determine the sequence distance
+        # between scaffold_start_pos (original) and current_start_pos(after circularize)
+
+        if self.sequence_offset is None:
+            sequence_distance = self.get_scaffold_distance(self.sequence_start_pos,
+                                                           self.current_start_pos)
+
+            # Assign the sequence offset
+            self.sequence_offset = sequence_distance % self.scaffolds[0].length()
 
     def set_circularize(self, circularize=False):
         '''
@@ -1290,6 +1296,15 @@ class Origami:
 
         # Circularize scaffold
         self.circularize_scaffold()
+
+        # Read scaffolds
+        self.read_scaffolds()
+
+        # Build scaffold map
+        self.build_scaffold_map()
+
+        # Determine the proper sequence offset
+        self.set_sequence_offset()
 
         # Reset oligos list
         self.reset_oligos()
@@ -2255,7 +2270,8 @@ class Origami:
         '''
         Reset oligos list
         '''
-        self.oligos = {'scaffold': [], 'staple': []}
+        self.oligos    = {'scaffold': [], 'staple': []}
+        self.oligo_map = {}
 
     def read_scaffold(self, scaffold):
         '''
@@ -2429,6 +2445,9 @@ class AutoBreak:
         # Maximum number of breaks allowed per oligo for autobreak
         self.max_num_breaks                  = 10000000
 
+        # Readonly setting
+        self.readonly                        = False
+
         # Optimization parameters
         self.optim_shuffle_oligos            = True
         self.optim_pick_method               = 'best'
@@ -2583,6 +2602,12 @@ class AutoBreak:
         Set lower bound
         '''
         self.LOWER_BOUND = min_length
+
+    def set_readonly(self, read_only=False):
+        '''
+        Set readonly parameter
+        '''
+        self.readonly = read_only
 
     def set_write_all_results(self, write_all_results=False):
         '''
@@ -2786,32 +2811,70 @@ class AutoBreak:
         self.origami.assign_strands_dna()
         self.origami.update_sequences_dna()
 
-        # Update graph edge weights
-        self.update_edge_weights()
+        # Treat sequence update differently
+        if self.readonly:
+            self.determine_initial_scores()
+        else:
+            # Update graph edge weights
+            self.update_edge_weights()
 
-    def permute_scaffold_sequence(self, nitr=100):
+    def permute_scaffold_sequence_autobreak(self, nitr=100):
         '''
         Permute scaffold sequence
         '''
-        # Set final offset
-        final_offset = 1
-        if self.permute_sequence:
-            final_offset = len(self.origami.scaffold_sequence)
-            # Check the number of permutation iterations allowed
-            if nitr < final_offset:
-                final_offset = nitr
+        # Set start offset
+        start_offset = self.origami.sequence_offset
 
-        for offset in tqdm(range(0, final_offset), desc='Permutation loop', leave=False,
-                           dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}'):
+        # Set final offset
+        final_itr = 1
+        if self.permute_sequence:
+            final_itr = len(self.origami.scaffold_sequence)
+            # Check the number of permutation iterations allowed
+            if nitr < final_itr:
+                final_itr = nitr
+
+        for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
+                        dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}'):
+
+            # Set the current offset
+            current_offset = (start_offset+itr) % self.origami.scaffolds[0].length()
+
             # Shift the sequence to the offset
-            self.shift_scaffold_sequence(offset)
+            self.shift_scaffold_sequence(current_offset)
 
             # Run autobreak
             self.run_autobreak()
 
             # Write results
             if self.write_all_results:
-                self.write_results(offset)
+                self.write_results(current_offset)
+
+    def permute_scaffold_sequence_readonly(self, nitr=100):
+        '''
+        Permute scaffold sequence
+        '''
+        # Set start offset
+        start_offset = self.origami.sequence_offset
+
+        # Set final offset
+        final_itr = 1
+        if self.permute_sequence:
+            final_itr = len(self.origami.scaffold_sequence)
+            # Check the number of permutation iterations allowed
+            if nitr < final_itr:
+                final_itr = nitr
+
+        for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
+                        dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}'):
+
+            # Set the current offset
+            current_offset = (start_offset+itr) % self.origami.scaffolds[0].length()
+
+            # Shift the sequence to the offset
+            self.shift_scaffold_sequence(current_offset)
+
+            # Determine scores and add the solution to solutions list
+            self.determine_readonly_scores()
 
     def run_autobreak(self):
         '''
@@ -2950,6 +3013,29 @@ class AutoBreak:
         for oligo in self.origami.oligos['staple']:
             oligo.get_initial_score()
 
+    def determine_readonly_scores(self):
+        '''
+        Determine readonly scores at a the current settings
+        '''
+        # Create a Complete Break Solution object
+        new_complete_solution = CompleteBreakSolution()
+
+        # Save total score and prob
+        total_score = 0
+        total_prob  = 1.0
+        for oligo in self.origami.oligos['staple']:
+            # Add scores
+            total_score += oligo.initial_score
+            total_prob  *= oligo.folding_prob
+
+        # Assign the scores
+        new_complete_solution.total_prob      = total_prob
+        new_complete_solution.total_score     = total_score
+        new_complete_solution.sequence_offset = self.origami.sequence_offset
+
+        # Add the solution to solutions list
+        self.complete_solutions[self.origami.sequence_offset] = new_complete_solution
+
     def export_initial_scores(self):
         '''
         Export initial scores to final excel file
@@ -3086,12 +3172,6 @@ class AutoBreak:
             complete_solution = self.complete_solutions[key]
             complete_solution.corrected_offset = (complete_solution.sequence_offset +
                                                   offset_difference) % self.origami.scaffolds[0].length()
-    def set_corrected_offset(self):
-        '''
-        Set corrected offset
-        '''
-        offset_difference = self.origami.get_scaffold_distance(self.origami.current_start_pos,
-                                                               self.origami.sequence_start_pos)
 
     def set_best_sequence_offset(self):
         '''
@@ -3099,10 +3179,7 @@ class AutoBreak:
         '''
         # Best sequence offset
         if self.best_complete_solution:
-            self.best_sequence_offset = self.best_complete_solution.sequence_offset
-
-        # Apply the offset and shift sequence
-        self.origami.apply_sequence(self.best_sequence_offset)
+            self.origami.sequence_offset = self.best_complete_solution.sequence_offset
 
     def break_best_complete_solution(self):
         '''
@@ -3115,9 +3192,6 @@ class AutoBreak:
             # Break group solution
             if self.best_complete_solution.group_solutions[key]:
                 self.best_complete_solution.group_solutions[key].break_group_solution()
-
-        # Assign sequence offset to best sequence offset
-        self.origami.sequence_offset = self.best_complete_solution.sequence_offset
 
     def set_score_func(self, func_args):
         '''
@@ -4019,7 +4093,7 @@ def main():
     parser.add_argument("-i",   "--input",    type=str,
                         help="Cadnano json file")
 
-    parser.add_argument("-read",   "--read",  action='store_true',
+    parser.add_argument("-readonly",   "--readonly",  action='store_true',
                         help="Read-only to determine oligo scores")
 
     parser.add_argument("-rule",   "--rule",     type=str, default='xstap',
@@ -4071,7 +4145,7 @@ def main():
     # Assign the parameters
     input_filename          = args.input
     sequence_filename       = args.sequence
-    read_only               = args.read
+    read_only               = args.readonly
     break_rule              = parse_break_rule(args.rule)
     score_func              = parse_score_function(args.score)
     optimization_func       = parse_optim_function(args.func)
@@ -4087,7 +4161,7 @@ def main():
     # Create args dictionary
     args_dict = {'input': args.input,
                  'sequence': args.sequence,
-                 'read': args.read,
+                 'read': args.readonly,
                  'rule': args.rule,
                  'score': args.score,
                  'func': args.func,
@@ -4157,6 +4231,9 @@ def main():
     # Set lower bound for oligo lengths
     new_autobreak.set_lower_bound(args.minlength)
 
+    # Set read only setting
+    new_autobreak.set_readonly(read_only)
+
     # Initialize origami object
     new_origami.initialize(input_filename)
 
@@ -4176,7 +4253,27 @@ def main():
     new_origami.warn_circular_scaffold()
 
     # Check if it is a read-only or autobreak run
-    if not read_only:
+    if read_only:
+
+        # Prepare origami
+        new_origami.prepare_origami()
+
+        # Run the permutation protocol
+        new_autobreak.permute_scaffold_sequence_readonly(npermute)
+
+        # Correct sequence offsets
+        new_autobreak.correct_complete_solution_offsets()
+
+        # Compare complete solutions
+        new_autobreak.compare_complete_solutions()
+
+        # Write results summary
+        new_autobreak.write_results_summary()
+
+        # Set best result's sequence offset
+        new_autobreak.set_best_sequence_offset()
+
+    else:
         # Prepare origami for autobreak
         new_origami.prepare_origami()
 
@@ -4193,7 +4290,7 @@ def main():
         new_autobreak.create_results_excel_file()
 
         # Run the permutation protocol
-        new_autobreak.permute_scaffold_sequence(npermute)
+        new_autobreak.permute_scaffold_sequence_autobreak(npermute)
 
         # Correct sequence offsets
         new_autobreak.correct_complete_solution_offsets()
@@ -4209,6 +4306,9 @@ def main():
 
         # Break best solutions
         new_autobreak.break_best_complete_solution()
+
+        # Set best result's sequence offset
+        new_autobreak.set_best_sequence_offset()
 
     # Read only the scores
     new_autobreak.determine_oligo_scores()
