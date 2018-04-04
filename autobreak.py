@@ -4161,7 +4161,7 @@ def main():
     # Create args dictionary
     args_dict = {'input': args.input,
                  'sequence': args.sequence,
-                 'read': args.readonly,
+                 'readonly': args.readonly,
                  'rule': args.rule,
                  'score': args.score,
                  'func': args.func,
