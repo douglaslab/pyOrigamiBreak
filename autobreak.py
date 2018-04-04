@@ -3058,7 +3058,9 @@ class AutoBreak:
             total_prob  *= oligo.folding_prob
 
         # Prepare summary data
-        self.final_summary_data = [['TotalProb', total_prob],
+        self.final_summary_data = [['SequenceOffset', self.best_complete_solution.sequence_offset],
+                                   ['CorrectedOffset', self.best_complete_solution.corrected_offset],
+                                   ['TotalProb', total_prob],
                                    ['TotalScore', total_score]]
 
         # Check if the data arrays are empty
