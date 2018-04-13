@@ -76,15 +76,28 @@ def write_oligos(oligos, stocks, json_files, fname, plate_header=''):
     ws1.column_dimensions['A'].width = 20
 
     # Add header row
-    ws1.append(('Structure', 'Stocks'))
+    ws1.append(('Structure', 'Stocks (ul)'))
+
+    # 0. Get oligo counts for each stock
+    stock_counts = {}
+    for current_oligo in oligos:
+        if current_oligo.sortkey not in stock_counts:
+            stock_counts[current_oligo.sortkey] = 0
+        # Update oligo counts
+        stock_counts[current_oligo.sortkey] += 1
 
     # 1. Write structures sheet
     for i in range(num_structures):
         stock_list = [json_files[i]]
+
+        # Starting H2O volume
+        water = 300
         for j in range(len(stocks)):
             stock_id = stocks[j]
             if stock_id[2][i] == '1':
-                stock_list.append(j+1)
+                stock_list.append('%d (%d)' % (j+1, stock_counts[stock_id]))
+                water -= stock_counts[stock_id]
+        stock_list.append('H2O (%d)' % (water))
         ws1.append(stock_list)
 
     # 2. Color cells for structures sheet
@@ -93,8 +106,8 @@ def write_oligos(oligos, stocks, json_files, fname, plate_header=''):
     for colNum in range(2, maxCol + 1, 1):
         for rowNum in range(2, maxRow + 1):
             current_cell = ws1.cell(row=rowNum, column=colNum)
-            if current_cell.value:
-                stock_id    = int(current_cell.value) - 1
+            if current_cell.value and current_cell.value[0] != 'H':
+                stock_id    = int(current_cell.value.split('(')[0]) - 1
                 stock_color = openpyxl.styles.colors.Color(rgb=stocks[stock_id][1][1:])
                 current_cell.fill = openpyxl.styles.fills.PatternFill(patternType='solid', fgColor=stock_color)
                 current_cell.font = white_font
@@ -115,7 +128,8 @@ def write_oligos(oligos, stocks, json_files, fname, plate_header=''):
 
     # Stock well positions
     stock_positions = {1: {'startwell': ('Plate%s-%d' % (plate_header, 1), 'A1'),
-                           'endwell': ('Plate%s-%d' % (plate_header, 1), 'A1')}}
+                           'endwell': ('Plate%s-%d' % (plate_header, 1), 'A1'),
+                           'counts': 0}}
 
     # Aggregate sheet
     ws_ALL = wb.create_sheet(title='PlatesAll')
@@ -159,10 +173,12 @@ def write_oligos(oligos, stocks, json_files, fname, plate_header=''):
         # Update start and endwells
         if current_stock_key == prev_stock_key:
             stock_positions[stock_id]['endwell'] = (plate_label, well_id)
+            stock_positions[stock_id]['counts'] += 1
         else:
             stock_positions[stock_id] = {}
             stock_positions[stock_id]['startwell'] = (plate_label, well_id)
             stock_positions[stock_id]['endwell']   = (plate_label, well_id)
+            stock_positions[stock_id]['counts']    = 1
 
         # Check if plate is in the list
         if plate_label not in sheet_labels:
@@ -205,12 +221,13 @@ def write_oligos(oligos, stocks, json_files, fname, plate_header=''):
     # 5. Write the Stocks sheet
     ws_stocks = wb.create_sheet(title='Stocks')
     # Append header
-    ws_stocks.append(['Stock Id', 'Start Plate', 'Start Well', 'End Plate', 'End Well'])
+    ws_stocks.append(['Stock Id', 'Start Plate', 'Start Well', 'End Plate', 'End Well', '#Oligos'])
     for stock_id in stock_positions:
         ws_stocks.append([stock_id, stock_positions[stock_id]['startwell'][0],
                           stock_positions[stock_id]['startwell'][1],
                           stock_positions[stock_id]['endwell'][0],
-                          stock_positions[stock_id]['endwell'][1]])
+                          stock_positions[stock_id]['endwell'][1],
+                          stock_positions[stock_id]['counts']])
 
     # Change the colors
     maxRow = ws_stocks.max_row
