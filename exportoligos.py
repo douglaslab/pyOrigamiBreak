@@ -80,7 +80,11 @@ def write_oligos(oligos, stocks, json_files, fname, plate_header=''):
 
     # 0. Get oligo counts for each stock
     stock_counts = {}
+    total_bases = 0
     for current_oligo in oligos:
+        # Update total bases
+        total_bases += current_oligo.length
+
         if current_oligo.sortkey not in stock_counts:
             stock_counts[current_oligo.sortkey] = 0
         # Update oligo counts
@@ -111,6 +115,9 @@ def write_oligos(oligos, stocks, json_files, fname, plate_header=''):
                 stock_color = openpyxl.styles.colors.Color(rgb=stocks[stock_id][1][1:])
                 current_cell.fill = openpyxl.styles.fills.PatternFill(patternType='solid', fgColor=stock_color)
                 current_cell.font = white_font
+
+    # Append total base count
+    ws1.append(['Total bases', total_bases])
 
     # 3. Initialize Plate/Well numbers
     plate_id  = 1
@@ -274,7 +281,7 @@ def read_sequence(sequence_file):
     return scaffold_sequence
 
 
-def read_oligos(cadnano_part, scaffold_sequence):
+def read_oligos(cadnano_part, scaffold_sequence, add_T=False):
     cadnano_oligos = cadnano_part.oligos()
     cadnano_oligos = sorted(cadnano_oligos, key=lambda x: x.length(), reverse=True)
 
@@ -283,6 +290,11 @@ def read_oligos(cadnano_part, scaffold_sequence):
 
     # Initialize the scaffolds and staples
     staples = {}
+
+    # Empty character
+    empty_ch = '?'
+    if add_T:
+        empty_ch = 'T'
 
     # Iterate over oligos
     for oligo in cadnano_oligos[1:]:
@@ -303,9 +315,9 @@ def read_oligos(cadnano_part, scaffold_sequence):
         generator           = oligo.strand5p().generator3pStrand()
         for strand in generator:
             if strand.totalLength() != len(strand.sequence()):
-                new_oligo.sequence += strand.length()*'?'
+                new_oligo.sequence += strand.length()*empty_ch
             else:
-                new_oligo.sequence += strand.sequence().replace(' ', '?')
+                new_oligo.sequence += strand.sequence().replace(' ', empty_ch)
 
         new_oligo.key       = '-'.join([str(new_oligo.vh5p),
                                         str(new_oligo.idx5p),
@@ -336,6 +348,9 @@ def main():
 
     parser.add_argument("-offset", "--offset", type=int, default=0,
                         help="Sequence offset")
+
+    parser.add_argument("-addT", "--addT", action='store_true',
+                        help="Replace ? with T")
 
     args = parser.parse_args()
 
@@ -390,7 +405,7 @@ def main():
         part = doc.activePart()
 
         # Get staples
-        staples = read_oligos(part, scaffold_sequence)
+        staples = read_oligos(part, scaffold_sequence, args.addT)
 
         # Write json output
         doc.writeToFile(json_output, legacy=False)
