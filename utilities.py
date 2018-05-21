@@ -114,6 +114,7 @@ def generate_nC(oligo_length):
     '''
     return 'C'*int(oligo_length)
 
+
 def get_min_distance(from_position, to_position, oligo_length, oligo_circular = True):
     '''
     Get min distance between two positions on a circular oligo
@@ -124,6 +125,7 @@ def get_min_distance(from_position, to_position, oligo_length, oligo_circular = 
         return min(first_distance, second_distance)
     else:
         return abs(to_position - from_position)
+
 
 def end_to_end_distance(num_bases):
     '''
@@ -155,6 +157,7 @@ def distance_to_loop_dG(distance_square, temperature_kelvin=323.15):
 
     return (dGloop, dSloop)
 
+
 def position_to_loop_dG(from_position, to_position, oligo_length, oligo_circular=True, 
                         temperature_kelvin=323.15):
     # Get number of minimum number of bases between to location
@@ -167,6 +170,7 @@ def position_to_loop_dG(from_position, to_position, oligo_length, oligo_circular
     energies = distance_to_loop_dG(distance_square, temperature_kelvin)
 
     return energies
+
 
 def sequence_to_Tm(sequence):
     '''
@@ -219,12 +223,14 @@ def sequence_to_Tm(sequence):
 
     return Tm_Mg
 
+
 def conc_to_dG(temperature_kelvin):
     # Entropy factor due to concenteration
     dSconc = R*np.log(STAP_CONC-0.5*SCAF_CONC)
     dGconc = -temperature_kelvin*dSconc
 
     return (dGconc, dSconc)
+
 
 def sequence_to_dG(sequence, temperature_kelvin):
     '''
@@ -258,3 +264,39 @@ def sequence_to_dG(sequence, temperature_kelvin):
     dGtotal = dHtotal - temperature_kelvin*dStotal
 
     return (dGtotal, dHtotal, dStotal)
+
+# Parse functions
+
+
+def parse_break_rule(break_rule):
+    '''m
+    Parse break rule
+    '''
+    return break_rule.split('.')
+
+
+def parse_score_function(score_function):
+    '''m
+    Parse break rule
+    '''
+    return score_function.split('.')
+
+
+def parse_optim_function(function_input):
+    '''
+    Parse optimizatiotion function input
+    '''
+    # Get the function groups
+    groups = function_input.split('.')
+
+    # Get the functions and its parameters
+    functions = [group.split(':') for group in groups]
+
+    return functions
+
+
+def parse_sequence_position(key_input):
+    '''
+    Parse sequence position
+    '''
+    return tuple([int(x) for x in key_input.split('.')])
