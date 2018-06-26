@@ -265,7 +265,10 @@ def sequence_to_dG(sequence, temperature_kelvin):
 
     return (dGtotal, dHtotal, dStotal)
 
-# Parse functions
+
+'''
+PARSE FUNCTIONS
+'''
 
 
 def parse_break_rule(break_rule):
