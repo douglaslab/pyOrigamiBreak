@@ -256,7 +256,7 @@ class Project:
             self.echo_writer.writerow(header)
 
             # Iterate over each row
-            for echo_row in self.echo_input+self.echo_res_input:
+            for echo_row in self.echo_res_input+self.echo_input:
                 echo_list = [echo_row['sourcePlate'],
                              echo_row['sourceWell'],
                              echo_row['destPlate'],
@@ -291,12 +291,6 @@ class Project:
 
         # Sort the input
         self.sort_ECHO_reservoir_input()
-
-    def write_ECHO_reservoir_input(self):
-        '''
-        Write ECHO reservoir input
-        '''
-        self.prepare_echo_reservoir_input()
 
     def sort_ECHO_input(self):
         '''
