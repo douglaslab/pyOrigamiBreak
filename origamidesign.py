@@ -1988,7 +1988,18 @@ class Origami:
             # If sequence length is less than scaffold length quit
             if len(self.scaffold_sequence) < self.scaffolds[0].length():
                 sys.exit('SCAFFOLD SEQUENCE IS SHORTER THAN SCAFFOLD LENGTH!')
-
+        elif self.sequence_file == 'allT':
+            # Make sequence allT
+            self.scaffold_sequence = utilities.generate_nT(self.scaffolds[0].length())
+        elif self.sequence_file == 'allA':
+            # Make sequence allA
+            self.scaffold_sequence = utilities.generate_nA(self.scaffolds[0].length())
+        elif self.sequence_file == 'allC':
+            # Make sequence allT
+            self.scaffold_sequence = utilities.generate_nC(self.scaffolds[0].length())
+        elif self.sequence_file == 'allG':
+            # Make sequence allA
+            self.scaffold_sequence = utilities.generate_nG(self.scaffolds[0].length())
         elif len(self.scaffolds) > 0:
             self.scaffold_sequence = utilities.generate_random_sequence(self.scaffolds[0].length())
 

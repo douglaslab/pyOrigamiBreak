@@ -108,11 +108,25 @@ def generate_nA(oligo_length):
     return 'A'*int(oligo_length)
 
 
+def generate_nT(oligo_length):
+    '''
+    Generate TTTTT...TTT
+    '''
+    return 'T'*int(oligo_length)
+
+
 def generate_nC(oligo_length):
     '''
     Generate CCCCC...CCC
     '''
     return 'C'*int(oligo_length)
+
+
+def generate_nG(oligo_length):
+    '''
+    Generate GGGGG...GGG
+    '''
+    return 'G'*int(oligo_length)
 
 
 def get_min_distance(from_position, to_position, oligo_length, oligo_circular = True):
@@ -163,7 +177,7 @@ def position_to_loop_dG(from_position, to_position, oligo_length, oligo_circular
     # Get number of minimum number of bases between to location
     base_distance   = get_min_distance(from_position, to_position, oligo_length, oligo_circular)
 
-    #Determine end to end distance^2
+    # Determine end to end distance^2
     distance_square = end_to_end_distance(base_distance)
 
     # Get the free energies
