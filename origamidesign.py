@@ -432,6 +432,7 @@ class Oligo:
         self.initial_score = new_edge.edge_weight
         self.folding_prob  = new_edge.edge_prob
         self.Tf            = new_edge.edge_Tf
+        self.dsDNA_length  = sum(new_edge.dsDNA_length_list)
 
     def color_by_folding_prob(self, color_map='bwr'):
         '''

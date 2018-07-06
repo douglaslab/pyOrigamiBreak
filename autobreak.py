@@ -26,8 +26,9 @@ matplotlib.use('TkAgg')
 
 class OligoBreakSolution:
     def __init__(self):
-        self.breaks = None
-        self.edges  = None
+        self.breaks       = None
+        self.edges        = None
+        self.dsDNA_length = 0
 
     def get_cvs_rows(self):
         '''
@@ -61,6 +62,13 @@ class OligoBreakSolution:
             cvs_writer_rows.append(edge.get_cvs_row_object())
 
         return cvs_writer_rows
+
+    def calculate_dsDNA_length(self):
+        self.dsDNA_length = 0
+        for edge in self.edges:
+            self.dsDNA_length += sum(edge.dsDNA_length_list)
+
+        return self.dsDNA_length
 
     def break_oligo_solution(self):
         '''
@@ -164,10 +172,11 @@ class GroupBreaksolution:
         Break solutions for oligo group
         '''
 
-        self.break_solutions = None
-        self.total_score     = 0
-        self.total_penalty   = 0
-        self.complete        = True
+        self.break_solutions    = None
+        self.total_score        = 0
+        self.total_penalty      = 0
+        self.total_dsDNA_length = 0
+        self.complete           = True
 
     def get_cvs_rows(self):
         cvs_writer_rows = []
@@ -217,9 +226,10 @@ class GroupBreaksolution:
         '''
         Calculate penalty for the oligo group solution
         '''
-        self.total_score   = 0
-        self.total_penalty = 0
-        self.complete      = True
+        self.total_score        = 0
+        self.total_penalty      = 0
+        self.total_dsDNA_length = 0
+        self.complete           = True
 
         # Iterate over each solution
         for key in self.break_solutions:
@@ -235,6 +245,9 @@ class GroupBreaksolution:
 
             # Update total score
             self.total_score += break_solution.score
+
+            # Update totel dsDNA length
+            self.total_dsDNA_length += break_solution.calculate_dsDNA_length()
 
             # Initialize the bad break list
             break_solution.bad_list = []
@@ -270,7 +283,9 @@ class CompleteBreakSolution:
         self.group_solutions     = {}
         self.total_prob          = 1
         self.total_score         = 0
+        self.total_norm_score    = 0
         self.total_penalty       = 0
+        self.total_dsDNA_length  = 0
         self.sequence_offset     = 0
         self.corrected_offset    = 0
         self.complete            = True
@@ -326,20 +341,25 @@ class CompleteBreakSolution:
         '''
         Calculate total score for the best solutions
         '''
-        self.total_prob    = 1.0
-        self.total_score   = 0
-        self.total_penalty = 0
-        self.complete      = True
+        self.total_prob         = 1.0
+        self.total_score        = 0
+        self.total_penalty      = 0
+        self.total_dsDNA_length = 0
+        self.complete           = True
 
         for key in self.group_solutions:
             # Break group solution
             if self.group_solutions[key]:
-                self.total_prob    *= np.exp(self.group_solutions[key].total_score)
-                self.total_score   += self.group_solutions[key].total_score
-                self.total_penalty += self.group_solutions[key].total_penalty
-                self.complete      *= self.group_solutions[key].complete
+                self.total_prob         *= np.exp(self.group_solutions[key].total_score)
+                self.total_score        += self.group_solutions[key].total_score
+                self.total_penalty      += self.group_solutions[key].total_penalty
+                self.total_dsDNA_length += self.group_solutions[key].total_dsDNA_length
+                self.complete           *= self.group_solutions[key].complete
             else:
                 self.complete       = False
+
+        # Determine normalized score
+        self.total_norm_score = 1.0*self.total_score/self.total_dsDNA_length
 
     def get_cvs_rows(self):
         '''
@@ -360,6 +380,7 @@ class CompleteBreakSolution:
         summary_rows = [['Temperature', self.temperature_celcius],
                         ['TotalProb', self.total_prob],
                         ['TotalScore', self.total_score],
+                        ['TotalNormScore', self.total_norm_score],
                         ['TotalPenalty', self.total_penalty],
                         ['Complete', int(self.complete)],
                         ['SequenceOffset', self.sequence_offset],
@@ -548,6 +569,7 @@ class AutoBreak:
                                          complete_solution.corrected_offset,
                                          complete_solution.total_prob,
                                          complete_solution.total_score,
+                                         complete_solution.total_norm_score,
                                          complete_solution.total_penalty])
 
         return self.results_summary
@@ -571,7 +593,7 @@ class AutoBreak:
         summary_frame  = pandas.DataFrame(results_summary)
 
         # Create summary header
-        summary_header = ['SequenceOffset', 'CorrectedOffset', 'TotalProb', 'TotalScore', 'TotalPenalty']
+        summary_header = ['SequenceOffset', 'CorrectedOffset', 'TotalProb', 'TotalScore', 'TotalNormScore', 'TotalPenalty']
 
         # Write summary data
         summary_frame.to_excel(writer, sheet_name='summary', header=summary_header, index=False)
@@ -1025,18 +1047,23 @@ class AutoBreak:
         new_complete_solution = CompleteBreakSolution()
 
         # Save total score and prob
-        total_score = 0
-        total_prob  = 1.0
+        total_score        = 0
+        total_prob         = 1.0
+        total_dsDNA_length = 0
         for oligo in self.origami.oligos['staple']:
             # Add scores
-            total_score += oligo.initial_score
-            total_prob  *= oligo.folding_prob
+            total_score        += oligo.initial_score
+            total_prob         *= oligo.folding_prob
+            total_dsDNA_length += oligo.dsDNA_length
 
         # Assign the scores
-        new_complete_solution.total_prob      = total_prob
-        new_complete_solution.total_score     = total_score
-        new_complete_solution.sequence_offset = self.origami.sequence_offset
+        new_complete_solution.total_prob         = total_prob
+        new_complete_solution.total_score        = total_score
+        new_complete_solution.sequence_offset    = self.origami.sequence_offset
+        new_complete_solution.total_dsDNA_length = total_dsDNA_length
 
+        # Determine normalizced score
+        new_complete_solution.total_norm_score = 1.0*total_score/total_dsDNA_length
         # Add the solution to solutions list
         self.complete_solutions[self.origami.sequence_offset] = new_complete_solution
 
@@ -1054,18 +1081,24 @@ class AutoBreak:
         # Save total score and prob
         total_score = 0
         total_prob  = 1.0
+        total_dsDNA = 0.0
         for oligo in self.origami.oligos['staple']:
             self.final_cvs_rows.append(oligo.end_to_end_edge.get_cvs_row_object())
 
             # Add scores
             total_score += oligo.initial_score
             total_prob  *= oligo.folding_prob
+            total_dsDNA += oligo.dsDNA_length
+
+        # Determine normalizced score
+        total_norm_score = 1.0*total_score/total_dsDNA
 
         # Prepare summary data
         self.final_summary_data = [['SequenceOffset', self.best_complete_solution.sequence_offset],
                                    ['CorrectedOffset', self.best_complete_solution.corrected_offset],
                                    ['TotalProb', total_prob],
-                                   ['TotalScore', total_score]]
+                                   ['TotalScore', total_score],
+                                   ['TotalNormScore', total_norm_score]]
 
         # Check if the data arrays are empty
         if len(self.final_cvs_rows) == 0:
@@ -1159,6 +1192,7 @@ class AutoBreak:
                        ' - CorrectedOffset: %-5d' % (complete_solution.corrected_offset) +
                        ' - TotalProb:%-5.2f' % (complete_solution.total_prob) +
                        ' - TotalScore:%-5.2f' % (complete_solution.total_score) +
+                       ' - TotalNormScore:%-5.2f' % (complete_solution.total_norm_score) +
                        ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty))
 
         # Assign best solution
@@ -2097,7 +2131,7 @@ def main():
                         help="Permute sequence")
 
     parser.add_argument("-npermute",  "--npermute",  type=int,
-                        help="Number of permutation iterations", default=100)
+                        help="Number of permutation iterations", default=0)
 
     parser.add_argument("-writeall",   "--writeall",  action='store_true',
                         help="Write all results")
