@@ -66,7 +66,8 @@ class OligoBreakSolution:
     def calculate_dsDNA_length(self):
         self.dsDNA_length = 0
         for edge in self.edges:
-            self.dsDNA_length += sum(edge.dsDNA_length_list)
+            if edge is not None:
+                self.dsDNA_length += sum(edge.dsDNA_length_list)
 
         return self.dsDNA_length
 
@@ -246,7 +247,7 @@ class GroupBreaksolution:
             # Update total score
             self.total_score += break_solution.score
 
-            # Update totel dsDNA length
+            # Update total dsDNA length
             self.total_dsDNA_length += break_solution.calculate_dsDNA_length()
 
             # Initialize the bad break list
