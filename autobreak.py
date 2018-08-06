@@ -670,13 +670,19 @@ class AutoBreak:
             self.NUM_OLIGO_SOLUTIONS  = 1
             self.NUM_GLOBAL_SOLUTIONS = 1
 
-    def set_output_directory(self, input_filename):
+    def set_output_directory(self, input_filename, output_directory=None):
         '''
         Set output directory
         '''
         # Split input file
         head, tail       = os.path.split(os.path.abspath(input_filename))
         root, ext        = os.path.splitext(tail)
+
+        # Keep the original input filename provided as input
+        self.input_filename = input_filename
+
+        # Save the filename with head removed only tail
+        self.input_tail     = tail
 
         # List existing output directories
         potential_directories = list(filter(lambda x: os.path.isdir(x),
@@ -690,13 +696,17 @@ class AutoBreak:
         if len(number_extensions) > 0:
             output_counter = max(number_extensions)+1
 
-        self.output_directory = head+'/'+root+"_autobreak_%03d" % (output_counter)
+        # Check the output directory
+        if output_directory is None:
+            self.output_directory = head+'/'+root+"_autobreak_%03d" % (output_counter)
+        else:
+            self.output_directory = output_directory
 
-        # Make directory
-        os.mkdir(self.output_directory)
+        # Make the output directory
+        os.makedirs(self.output_directory, exist_ok=True)
 
         # Copy input file to output directory
-        copyfile(input_filename, self.output_directory+'/'+tail)
+        copyfile(self.input_filename, self.output_directory+'/'+self.input_tail)
 
     def copy_sequence_file(self):
         '''
@@ -2063,6 +2073,9 @@ def main():
     parser.add_argument("-i",   "--input",    type=str,
                         help="Cadnano json file")
 
+    parser.add_argument("-o",   "--output",    type=str,
+                        help="Output directory", default=None)
+
     parser.add_argument("-readonly",   "--readonly",  action='store_true',
                         help="Read-only to determine oligo scores")
 
@@ -2114,6 +2127,7 @@ def main():
 
     # Assign the parameters
     input_filename          = args.input
+    output_directory        = args.output
     sequence_filename       = args.sequence
     read_only               = args.readonly
     break_rule              = utilities.parse_break_rule(args.rule)
@@ -2130,6 +2144,7 @@ def main():
 
     # Create args dictionary
     args_dict = {'input': args.input,
+                 'output': args.output,
                  'sequence': args.sequence,
                  'readonly': args.readonly,
                  'rule': args.rule,
@@ -2190,7 +2205,7 @@ def main():
     new_autobreak.set_verbose_output(verbose_output)
 
     # Set output directory
-    new_autobreak.set_output_directory(input_filename)
+    new_autobreak.set_output_directory(input_filename, output_directory)
 
     # Set write all flag
     new_autobreak.set_write_all_results(write_all_results)
