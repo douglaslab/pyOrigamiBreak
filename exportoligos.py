@@ -6,6 +6,7 @@
 # @Version : $Id$
 
 from cadnano.document import Document
+from shutil import copyfile
 
 import os
 import csv
@@ -226,6 +227,43 @@ class Project:
             self.stock_counts[current_oligo.sortkey] += 1
             self.stocks[current_oligo.sortkey].count += 1
             self.stocks[current_oligo.sortkey].oligos_list.append(current_oligo)
+
+    def set_output_directory(self, output_directory=None):
+        '''
+        Set output directory
+        '''
+        # Split first input file
+        head, tail       = os.path.split(os.path.abspath(self.json_files[0]))
+        root, ext        = os.path.splitext(tail)
+
+        # Save the filename with head removed only tail
+        self.input_tail     = tail
+
+        # List existing output directories
+        potential_directories = list(filter(lambda x: os.path.isdir(x),
+                                            glob.glob(head+'/'+root+'_autopipette_[0-9][0-9][0-9]')))
+
+        # Get the number extensions
+        number_extensions = [int(x[-3:]) for x in potential_directories]
+
+        # Get the counter
+        output_counter = 1
+        if len(number_extensions) > 0:
+            output_counter = max(number_extensions)+1
+
+        # Check the output directory
+        if output_directory is None:
+            self.output_directory = head+'/'+root+"_autopipette_%03d" % (output_counter)
+        else:
+            self.output_directory = output_directory
+
+        # Make the output directory
+        os.makedirs(self.output_directory, exist_ok=True)
+
+        # Copy input files to output directory
+        for input_file in self.json_files:
+            head, tail = os.path.split(os.path.abspath(input_file))
+            copyfile(input_file, self.output_directory+'/'+tail)
 
     def add_json_files(self, json_files):
         '''
@@ -1157,6 +1195,9 @@ def main():
     parser.add_argument("-i",   "--input",    type=str, nargs='+', required=True,
                         help="Cadnano json file(s)")
 
+    parser.add_argument("-o",   "--output",    type=str,
+                        help="Output directory", default=None)
+
     parser.add_argument("-seq",   "--seq", type=str,
                         help="Scaffold sequence file")
 
@@ -1192,6 +1233,9 @@ def main():
     # Add json files
     new_project.add_json_files(json_files)
 
+    # Set output directory
+    new_project.set_output_directory(args.output)
+
     # Check if sequence file exists
     if len(scaffold_sequence) == 0:
         sys.exit('Scaffold sequence is not available!')
@@ -1201,10 +1245,9 @@ def main():
                                      new_project.scaffold_sequence[:args.offset])
 
     # Define output file
-    head, tail         = os.path.split(os.path.abspath(json_files[0]))
-    xlsx_output_96well  = head+'/oligos_96well.xlsx'
-    xlsx_output_384well = head+'/oligos_384well.xlsx'
-    echo_output_384well = head+'/echo_384well.csv'
+    xlsx_output_96well  = new_project.output_directory+'/oligos_96well.xlsx'
+    xlsx_output_384well = new_project.output_directory+'/oligos_384well.xlsx'
+    echo_output_384well = new_project.output_directory+'/echo_384well.csv'
 
     # Initialize cadnano
     app = cadnano.app()
@@ -1219,9 +1262,6 @@ def main():
         # Define json output
         head, ext  = os.path.splitext(os.path.abspath(json_input))
 
-        # Json output
-        json_output = head+'_export.json'
-
         # Read cadnano input file
         doc.readFile(json_input)
 
@@ -1234,9 +1274,6 @@ def main():
         new_structure.oligos_dict  = new_structure.read_oligos(part, new_project.scaffold_sequence, args.addT)
         new_structure.structure_id = i
         new_structure.project      = new_project
-
-        # Write json output
-        doc.writeToFile(json_output, legacy=False)
 
         # Add structure to list
         new_project.add_structure(new_structure)
