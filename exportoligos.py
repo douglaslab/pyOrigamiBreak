@@ -694,8 +694,11 @@ class Project:
             if current_stock_key == prev_stock_key or self.noskip:
                 counter_plate.advance_row_order()
             else:
-                stock_id += 1
                 counter_plate.advance_stock_row_order()
+
+            # Update stock id
+            if current_stock_key != prev_stock_key:
+                stock_id += 1
 
             # Get plate id
             plate_label = 'Plate%s-%d' % (self.plate_header, counter_plate.current_plate_id)
