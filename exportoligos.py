@@ -49,6 +49,14 @@ class Project:
         self.echo_input     = []
         self.echo_res_input = []
 
+        self.noskip         = False
+
+    def set_noskip(self, no_skip=False):
+        '''
+        Set noskip parameter
+        '''
+        self.noskip = no_skip
+
     def assign_color_counters(self):
         '''
         Assign color counters
@@ -683,7 +691,7 @@ class Project:
             # Update sequence id
             seq_id += 1
 
-            if current_stock_key == prev_stock_key:
+            if current_stock_key == prev_stock_key or self.noskip:
                 counter_plate.advance_row_order()
             else:
                 stock_id += 1
@@ -1210,6 +1218,9 @@ def main():
     parser.add_argument("-addT", "--addT", action='store_true',
                         help="Replace ? with T")
 
+    parser.add_argument("-noskip", "--noskip", action='store_true',
+                        help="Do not skip wells for 96 well plate format")
+
     args = parser.parse_args()
 
     # Check if the required arguments are passed to the code
@@ -1235,6 +1246,9 @@ def main():
 
     # Set output directory
     new_project.set_output_directory(args.output)
+
+    # Set no skip
+    new_project.set_noskip(args.noskip)
 
     # Check if sequence file exists
     if len(scaffold_sequence) == 0:
