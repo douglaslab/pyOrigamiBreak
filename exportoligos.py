@@ -293,9 +293,9 @@ class Project:
             self.echo_writer = csv.writer(csvfile, delimiter=',')
 
             # Write header
-            header = ['Source Plate Barcode',
+            header = ['Source Plate Name',
                       'Source Well',
-                      'Destination Plate Barcode',
+                      'Destination Plate Name',
                       'Destination Well',
                       'Transfer Volume']
 
@@ -489,7 +489,7 @@ class Project:
         # Append total base count
         self.ws_str.append(['Total bases', self.total_bases])
 
-    def _write_structure_sheet_384well(self, nreps=12):
+    def _write_structure_sheet_384well(self, nreps=1):
         '''
         Write structure sheet for 384 well
         '''
@@ -854,8 +854,8 @@ class Structure:
         self.project        = None
         self.stocks         = {}
         self.water_96well   = 300          # In ul (microliters)
-        self.water_384well  = 10           # In nl (nanoliters)
-        self.echo_drop_vol  = 25           # In nl (nanoliters)
+        self.water_384well  = 20000        # In nl (nanoliters)
+        self.echo_drop_vol  = 100          # In nl (nanoliters)
         self.echo_input     = []
         self.echo_res_input = []           # Echo reservoir input
         self.oligo_conc     = 200          # In uM
@@ -910,7 +910,7 @@ class Structure:
         '''
         Prepare ECHO reservoir input
         '''
-        self.water_384well  = 10000.0 - 1.0*len(self.oligos_list)*self.echo_drop_vol
+        self.water_384well  = 40000.0 - 1.0*len(self.oligos_list)*self.echo_drop_vol
 
         # Prepare reservoir input
         self.echo_res_input = [{'sourcePlate': 'Reservoir',
