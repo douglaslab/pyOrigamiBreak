@@ -92,7 +92,7 @@ class Project:
             self.oligos_list.append(self.oligos_dict[key])
 
         # 4. Sort staples based on length
-        self.oligos_list.sort(key=lambda x: x.length)
+        self.oligos_list.sort(key=lambda x: (x.length, x.vh5p, x.idx5p, x.vh3p, x.idx3p, x.sequence))
 
         # 5. Sort staples based on the sort key
         self.oligos_list.sort(key=lambda x: x.sortkey, reverse=True)
@@ -855,7 +855,7 @@ class Structure:
         self.stocks         = {}
         self.water_96well   = 300          # In ul (microliters)
         self.water_384well  = 20000        # In nl (nanoliters)
-        self.echo_drop_vol  = 100          # In nl (nanoliters)
+        self.echo_drop_vol  = 50           # In nl (nanoliters)
         self.echo_input     = []
         self.echo_res_input = []           # Echo reservoir input
         self.oligo_conc     = 200          # In uM
@@ -910,7 +910,7 @@ class Structure:
         '''
         Prepare ECHO reservoir input
         '''
-        self.water_384well  = 40000.0 - 1.0*len(self.oligos_list)*self.echo_drop_vol
+        self.water_384well  = 20000.0 - 1.0*len(self.oligos_list)*self.echo_drop_vol
 
         # Prepare reservoir input
         self.echo_res_input = [{'sourcePlate': 'Reservoir',
