@@ -1289,7 +1289,7 @@ def main():
         # Apply the offset
         new_structure.scaffold_sequence = (new_project.scaffold_sequence[new_structure.offset:] +
                                            new_project.scaffold_sequence[:new_structure.offset])
-        new_structure.oligos_dict  = new_structure.read_oligos(part, new_project.scaffold_sequence, args.addT)
+        new_structure.oligos_dict  = new_structure.read_oligos(part, new_structure.scaffold_sequence, args.addT)
         new_structure.structure_id = i
         new_structure.project      = new_project
 
