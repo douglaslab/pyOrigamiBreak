@@ -652,6 +652,7 @@ class Origami:
 
         # DNA Sequence parameters
         self.sequence_offset    = None
+        self.corrected_offset   = 0   
         self.sequence_start_pos = None
         self.current_start_pos  = None
 
@@ -987,6 +988,12 @@ class Origami:
 
         # Apply crossover rule
         self.apply_cross_rule()
+
+    def set_cadnano_sequence_offset(self):
+        '''
+        Set cadnano sequenceOffset
+        '''
+        self.part.setSequenceOffset(self.corrected_offset)
 
     def get_cadnano_strand(self, vh, idx, direction):
         '''

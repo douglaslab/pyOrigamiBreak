@@ -1215,7 +1215,7 @@ def main():
     parser.add_argument("-header", "--header", type=str, default='',
                         help="Plate header")
 
-    parser.add_argument("-offset", "--offset", type=int, default=0,
+    parser.add_argument("-offset", "--offset", type=int, default=None,
                         help="Sequence offset")
 
     parser.add_argument("-addT", "--addT", action='store_true',
@@ -1257,10 +1257,6 @@ def main():
     if len(scaffold_sequence) == 0:
         sys.exit('Scaffold sequence is not available!')
 
-    # Apply the offset
-    new_project.scaffold_sequence = (new_project.scaffold_sequence[args.offset:] +
-                                     new_project.scaffold_sequence[:args.offset])
-
     # Define output file
     xlsx_output_96well  = new_project.output_directory+'/oligos_96well.xlsx'
     xlsx_output_384well = new_project.output_directory+'/oligos_384well.xlsx'
@@ -1288,6 +1284,11 @@ def main():
         # Get staples
         # Create structure object
         new_structure = Structure()
+        new_structure.offset = args.offset or part.getSequenceOffset()
+
+        # Apply the offset
+        new_structure.scaffold_sequence = (new_project.scaffold_sequence[new_structure.offset:] +
+                                           new_project.scaffold_sequence[:new_structure.offset])
         new_structure.oligos_dict  = new_structure.read_oligos(part, new_project.scaffold_sequence, args.addT)
         new_structure.structure_id = i
         new_structure.project      = new_project

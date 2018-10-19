@@ -1230,7 +1230,8 @@ class AutoBreak:
         '''
         # Best sequence offset
         if self.best_complete_solution:
-            self.origami.sequence_offset = self.best_complete_solution.sequence_offset
+            self.origami.sequence_offset  = self.best_complete_solution.sequence_offset
+            self.origami.corrected_offset = self.best_complete_solution.corrected_offset
 
     def break_best_complete_solution(self):
         '''
@@ -2341,6 +2342,9 @@ def main():
 
     # Split scaffold
     new_origami.split_scaffold()
+
+    # Assign cadnano sequenceOffset
+    new_origami.set_cadnano_sequence_offset()
 
     # Write result to json
     new_autobreak.write_final_part_to_json()
