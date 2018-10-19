@@ -496,7 +496,7 @@ class Project:
         # Append total base count
         self.ws_str.append(['Total bases', self.total_bases])
 
-    def _write_structure_sheet_384well(self, nreps=1):
+    def _write_structure_sheet_384well(self, nreps=2):
         '''
         Write structure sheet for 384 well
         '''
@@ -506,8 +506,7 @@ class Project:
 
         # Initialize counter plate
         counter_plate = Plate()
-        counter_plate.current_row_id   = 0
-        counter_plate.current_col_id   = 12
+        counter_plate.current_col_id   = 0
         counter_plate.current_plate_id = 0
 
         # Initialize current plate
@@ -524,10 +523,14 @@ class Project:
         for i in range(len(self.structures)):
             current_structure = self.structures[i]
 
+            # Set rwo and column id
+            counter_plate.current_row_id   = 0
+            counter_plate.current_col_id  += 1
+
             for j in range(nreps):
 
                 # Advance in row order
-                counter_plate.advance_row_order()
+                counter_plate.advance_col_order()
 
                 # Plate label
                 plate_label       = 'DestPlate-%d' % (counter_plate.current_plate_id)
