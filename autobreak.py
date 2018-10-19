@@ -2115,7 +2115,7 @@ def main():
     parser.add_argument("-readonly",   "--readonly",  action='store_true',
                         help="Read-only to determine oligo scores")
 
-    parser.add_argument("-rule",   "--rule",     type=str, default='xstap',
+    parser.add_argument("-rule",   "--rule",     type=str, default='xstap.all3',
                         help="Break rule")
 
     parser.add_argument("-score",   "--score",     type=str, default='sum',

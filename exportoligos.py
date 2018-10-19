@@ -50,6 +50,13 @@ class Project:
         self.echo_res_input = []
 
         self.noskip         = False
+        self.nreps_ECHO     = 1
+
+    def set_nreps_ECHO(self, nreps=1):
+        '''
+        Set nreps_ECHO
+        '''
+        self.nreps_ECHO = nreps
 
     def set_noskip(self, no_skip=False):
         '''
@@ -835,7 +842,7 @@ class Project:
         Export oligos
         '''
         self._create_workbook_384well()
-        self._write_structure_sheet_384well()
+        self._write_structure_sheet_384well(nreps=self.nreps_ECHO)
         self._write_plate_sheets_384well(plate_header)
         self.save_sheets_384well(out_fname)
 
@@ -1212,6 +1219,9 @@ def main():
     parser.add_argument("-seq",   "--seq", type=str,
                         help="Scaffold sequence file")
 
+    parser.add_argument("-nreps", "--nreps", type=int, default=1,
+                        help="Number of replicates for ECHO output")
+
     parser.add_argument("-header", "--header", type=str, default='',
                         help="Plate header")
 
@@ -1252,6 +1262,9 @@ def main():
 
     # Set no skip
     new_project.set_noskip(args.noskip)
+
+    # Set Echo replicates
+    new_project.set_nreps_ECHO(args.nreps)
 
     # Check if sequence file exists
     if len(scaffold_sequence) == 0:

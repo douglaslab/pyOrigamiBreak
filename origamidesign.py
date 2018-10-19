@@ -1982,6 +1982,7 @@ class Origami:
         # 3. Generate random sequence
 
         if self.sequence_file in utilities.SCAFFOLD_SEQUENCES:
+            print("Sequence code %s exists." % (self.sequence_file))
             self.scaffold_sequence = utilities.SCAFFOLD_SEQUENCES[self.sequence_file]
 
         elif self.sequence_file and os.path.isfile(self.sequence_file):
