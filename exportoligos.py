@@ -506,7 +506,7 @@ class Project:
 
         # Initialize counter plate
         counter_plate = Plate()
-        counter_plate.current_col_id   = 0
+        counter_plate.current_row_id   = 0
         counter_plate.current_plate_id = 0
 
         # Initialize current plate
@@ -524,13 +524,13 @@ class Project:
             current_structure = self.structures[i]
 
             # Set rwo and column id
-            counter_plate.current_row_id   = 0
-            counter_plate.current_col_id  += 1
+            counter_plate.current_row_id  += 1
+            counter_plate.current_col_id   = 0
 
             for j in range(nreps):
 
                 # Advance in row order
-                counter_plate.advance_col_order()
+                counter_plate.advance_row_order()
 
                 # Plate label
                 plate_label       = 'DestPlate-%d' % (counter_plate.current_plate_id)
