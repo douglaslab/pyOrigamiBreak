@@ -30,6 +30,8 @@ class Sequence:
         '''
         self.dna           = None
         self.next_sequence = None
+        self.scaffoldPos   = []
+        self.scaffoldId    = []
 
     def assign_scaffold_positions(self):
         '''
