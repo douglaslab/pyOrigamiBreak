@@ -496,7 +496,7 @@ class Project:
         # Append total base count
         self.ws_str.append(['Total bases', self.total_bases])
 
-    def _write_structure_sheet_384well(self, nreps=2):
+    def _write_structure_sheet_384well(self, nreps=2, addspace=False):
         '''
         Write structure sheet for 384 well
         '''
@@ -506,8 +506,13 @@ class Project:
 
         # Initialize counter plate
         counter_plate = Plate()
-        counter_plate.current_row_id   = 0
+        counter_plate.current_row_id   = 1
+        counter_plate.current_col_id   = 0
         counter_plate.current_plate_id = 0
+
+        # If no space is allowed, start from row 1
+        if addspace:
+            counter_plate.current_row_id = 0
 
         # Initialize current plate
         current_plate = None
@@ -523,9 +528,10 @@ class Project:
         for i in range(len(self.structures)):
             current_structure = self.structures[i]
 
-            # Set rwo and column id
-            counter_plate.current_row_id  += 1
-            counter_plate.current_col_id   = 0
+            # Set row and column id
+            if addspace:
+                counter_plate.current_row_id  += 1
+                counter_plate.current_col_id   = 0
 
             for j in range(nreps):
 
@@ -840,12 +846,12 @@ class Project:
         self._order_sheets_96well()
         self.save_sheets_96well(out_fname)
 
-    def write_oligos_384well(self, out_fname, plate_header=''):
+    def write_oligos_384well(self, out_fname, plate_header='', ECHOspace=False):
         '''
         Export oligos
         '''
         self._create_workbook_384well()
-        self._write_structure_sheet_384well(nreps=self.nreps_ECHO)
+        self._write_structure_sheet_384well(nreps=self.nreps_ECHO, addspace=ECHOspace)
         self._write_plate_sheets_384well(plate_header)
         self.save_sheets_384well(out_fname)
 
@@ -1237,6 +1243,9 @@ def main():
     parser.add_argument("-noskip", "--noskip", action='store_true',
                         help="Do not skip wells for 96 well plate format")
 
+    parser.add_argument("-ECHOspace", "--ECHOspace", action='store_true',
+                        help="Keep each structure in a seperate row on ECHO destination plate")
+
     args = parser.parse_args()
 
     # Check if the required arguments are passed to the code
@@ -1328,7 +1337,7 @@ def main():
     new_project.write_oligos_96well(xlsx_output_96well, args.header)
 
     # 8. Export oligos for 384 well plate format
-    new_project.write_oligos_384well(xlsx_output_384well, args.header)
+    new_project.write_oligos_384well(xlsx_output_384well, args.header, args.ECHOspace)
 
     # 9. Prepare ECHO input
     new_project.prepare_ECHO_input()
