@@ -107,7 +107,7 @@ class OligoGroup:
             self.group_solutions.append(new_group_solution)
 
     def create_stepwise_oligo_solutions(self, num_oligo_solutions=100, num_global_solutions=500,
-                                        pick_method='random', shuffle_oligos=True, verbose=False):
+                                        pick_method='random', shuffle_oligos=True, verbose=False, tqdm_file=None):
         '''
         Create stepwise oligo solutions
         '''
@@ -117,7 +117,7 @@ class OligoGroup:
 
         # Number of solutions
         for i in tqdm(range(num_global_solutions), desc='Global loop', leave=False,
-                      dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+                      dynamic_ncols=True, bar_format='{l_bar}{bar}', file=tqdm_file):
 
             # Reset temporary neighbor constraints
             self.reset_temp_neighbor_constraints()
@@ -132,14 +132,14 @@ class OligoGroup:
 
             # Iterate over every oligo
             for oligo in tqdm(self.oligos, desc='Oligo loop', leave=False,
-                              dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+                              dynamic_ncols=True, bar_format='{l_bar}{bar}', file=tqdm_file):
 
                 # If oligo has dont break flag, skip
                 if oligo.dont_break:
                     continue
 
                 # 1. Create shortest paths
-                oligo.generate_shortest_paths(num_oligo_solutions, verbose=verbose)
+                oligo.generate_shortest_paths(num_oligo_solutions, verbose=verbose, tqdm_file=tqdm_file)
 
                 # 2. Remove penalized solutions
                 oligo.remove_penalized_solutions()
@@ -543,7 +543,7 @@ class Oligo:
             # Update current breaks
             current_break = current_break.next_break
 
-    def generate_shortest_paths(self, num_solutions=1, verbose=False):
+    def generate_shortest_paths(self, num_solutions=1, verbose=False, tqdm_file=None):
         '''
         Get the shortest paths for the oligo if only it allowed to break it
         '''
@@ -571,7 +571,7 @@ class Oligo:
 
         if self.circular:
             for current_break in tqdm(self.breaks, desc='Shortest path loop ',
-                                      dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+                                      dynamic_ncols=True, bar_format='{l_bar}{bar}', file=tqdm_file):
 
                 # Check the constraints. If not allowed to break, skip
                 if current_break.dont_break or current_break.dont_break_temp:
@@ -652,7 +652,7 @@ class Origami:
 
         # DNA Sequence parameters
         self.sequence_offset    = None
-        self.corrected_offset   = 0   
+        self.corrected_offset   = 0
         self.sequence_start_pos = None
         self.current_start_pos  = None
 
