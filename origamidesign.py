@@ -45,16 +45,19 @@ class Sequence:
 
 
 class OligoGroup:
-    def __init__(self):
+    def __init__(self, tqdm_file=None, tqdm_progress_bar_file=None):
         '''
         Oligo group connected to each other through break point neighborship
         '''
-        self.key                   = None
-        self.oligos                = None
-        self.breaks                = None
-        self.group_solutions       = None
-        self.best_score_solution   = None
-        self.best_penalty_solution = None
+        self.key                    = None
+        self.oligos                 = None
+        self.breaks                 = None
+        self.group_solutions        = None
+        self.best_score_solution    = None
+        self.best_penalty_solution  = None
+
+        self.tqdm_file              = tqdm_file
+        self.tqdm_progress_bar_file = tqdm_progress_bar_file
 
     def remove_incomplete_solutions(self):
         '''
@@ -107,7 +110,7 @@ class OligoGroup:
             self.group_solutions.append(new_group_solution)
 
     def create_stepwise_oligo_solutions(self, num_oligo_solutions=100, num_global_solutions=500,
-                                        pick_method='random', shuffle_oligos=True, verbose=False, tqdm_file=None):
+                                        pick_method='random', shuffle_oligos=True, verbose=False):
         '''
         Create stepwise oligo solutions
         '''
@@ -117,7 +120,7 @@ class OligoGroup:
 
         # Number of solutions
         for i in tqdm(range(num_global_solutions), desc='Global loop', leave=False,
-                      dynamic_ncols=True, bar_format='{l_bar}{bar}', file=tqdm_file):
+                      dynamic_ncols=True, bar_format='{l_bar}{bar}', file=self.tqdm_progress_bar_file):
 
             # Reset temporary neighbor constraints
             self.reset_temp_neighbor_constraints()
@@ -132,14 +135,14 @@ class OligoGroup:
 
             # Iterate over every oligo
             for oligo in tqdm(self.oligos, desc='Oligo loop', leave=False,
-                              dynamic_ncols=True, bar_format='{l_bar}{bar}', file=tqdm_file):
+                              dynamic_ncols=True, bar_format='{l_bar}{bar}', file=self.tqdm_progress_bar_file):
 
                 # If oligo has dont break flag, skip
                 if oligo.dont_break:
                     continue
 
                 # 1. Create shortest paths
-                oligo.generate_shortest_paths(num_oligo_solutions, verbose=verbose, tqdm_file=tqdm_file)
+                oligo.generate_shortest_paths(num_oligo_solutions, verbose=verbose)
 
                 # 2. Remove penalized solutions
                 oligo.remove_penalized_solutions()
@@ -330,7 +333,7 @@ class Strand:
 
 
 class Oligo:
-    def __init__(self):
+    def __init__(self, tqdm_file=None, tqdm_progress_bar_file=None):
         '''
         Oligo class
         '''
@@ -352,6 +355,9 @@ class Oligo:
         self.chosen_solution       = None
         self.best_score_solution   = None
         self.best_penalty_solution = None
+
+        self.tqdm_file              = tqdm_file
+        self.tqdm_progress_bar_file = tqdm_progress_bar_file
 
     def break_in_half(self):
         '''
@@ -543,7 +549,7 @@ class Oligo:
             # Update current breaks
             current_break = current_break.next_break
 
-    def generate_shortest_paths(self, num_solutions=1, verbose=False, tqdm_file=None):
+    def generate_shortest_paths(self, num_solutions=1, verbose=False):
         '''
         Get the shortest paths for the oligo if only it allowed to break it
         '''
@@ -553,7 +559,8 @@ class Oligo:
 
         # Show oligo being processed - use tdqm
         if verbose:
-            tqdm.write('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)))
+            tqdm.write('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)),
+                       file=self.tqdm_file)
 
         if self.dont_break:
             self.break_solutions = []
@@ -571,7 +578,7 @@ class Oligo:
 
         if self.circular:
             for current_break in tqdm(self.breaks, desc='Shortest path loop ',
-                                      dynamic_ncols=True, bar_format='{l_bar}{bar}', file=tqdm_file):
+                                      dynamic_ncols=True, bar_format='{l_bar}{bar}', file=self.tqdm_progress_bar_file):
 
                 # Check the constraints. If not allowed to break, skip
                 if current_break.dont_break or current_break.dont_break_temp:
@@ -627,10 +634,13 @@ class CrossoverSet:
 
 
 class Origami:
-    def __init__(self):
+    def __init__(self, tqdm_file=None, tqdm_progress_bar_file=None):
         '''
         Origami class
         '''
+
+        self.tqdm_file              = tqdm_file
+        self.tqdm_progress_bar_file = tqdm_progress_bar_file
 
         self.json_input     = None
         self.oligos         = {'scaffold': [], 'staple': []}
@@ -663,8 +673,9 @@ class Origami:
         cadnano_oligos = self.part.oligos()
         cadnano_oligos = sorted(cadnano_oligos, key=lambda x: x.length(), reverse=True)
         if cadnano_oligos[0].isCircular():
-            print('Warning: Scaffold is circular.' +
-                  ' It is recommended to add a break in scaffold before applying autobreak.')
+            tqdm.write('Warning: Scaffold is circular.' +
+                       ' It is recommended to add a break in scaffold before applying autobreak.',
+                       file=self.tqdm_file)
 
     def circularize_scaffold(self):
         '''
@@ -1086,7 +1097,7 @@ class Origami:
         previous_strand.distance    = 0
 
         # Create Oligo object
-        new_oligo               = Oligo()
+        new_oligo               = Oligo(tqdm_file=self.tqdm_file, tqdm_progress_bar_file=self.tqdm_progress_bar_file)
         new_oligo.type          = oligo_type
         new_oligo.circular      = oligo.isCircular()
         new_oligo.null_strand   = previous_strand
@@ -1708,7 +1719,8 @@ class Origami:
                     new_break.sequence    = current_strand.sequences[sequence_id] if sequence_id >= 0 else None
 
                     if new_break.sequence is None:
-                        print(new_break.key, current_strand.length, break_position, current_strand.sequence_idxLows)
+                        tqdm.write(new_break.key, current_strand.length, break_position,
+                                   current_strand.sequence_idxLows, file=self.tqdm_file)
 
                     # Assign strand to new break
                     new_break.strand      = current_strand
@@ -1834,7 +1846,8 @@ class Origami:
         for current_break in self.breaks:
             if not current_break.visited:
                 # Create new oligo group
-                new_oligo_group = OligoGroup()
+                new_oligo_group = OligoGroup(tqdm_file=self.tqdm_file,
+                                             tqdm_progress_bar_file=self.tqdm_progress_bar_file)
 
                 # Perform depth first search starting from current break
                 visited_breaks  = current_break.depth_first_search()
@@ -1982,7 +1995,7 @@ class Origami:
         # 3. Generate random sequence
 
         if self.sequence_file in utilities.SCAFFOLD_SEQUENCES:
-            print("Sequence code %s exists." % (self.sequence_file))
+            tqdm.write("Sequence code %s exists." % self.sequence_file, file=self.tqdm_file)
             self.scaffold_sequence = utilities.SCAFFOLD_SEQUENCES[self.sequence_file]
 
         elif self.sequence_file and os.path.isfile(self.sequence_file):

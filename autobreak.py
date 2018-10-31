@@ -22,7 +22,9 @@ import matplotlib
 import origamidesign
 
 matplotlib.use('TkAgg')
-TQDM_FILE = None
+
+TQDM_PROGRESS_BAR_FILE  = None
+TQDM_FILE               = None
 
 
 class OligoBreakSolution:
@@ -96,9 +98,9 @@ class OligoBreakSolution:
         '''
         if self.breaks:
             tqdm.write('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" %
-                       (current_break.key) for current_break in self.breaks]))
+                       (current_break.key) for current_break in self.breaks]), file=TQDM_FILE)
             tqdm.write('Edge length/weight: '+'->'.join(['(%d / %.1e)' %
-                       (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]))
+                       (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]), file=TQDM_FILE)
 
     def reset_temp_neighbor_constraints(self):
         '''
@@ -216,11 +218,11 @@ class GroupBreaksolution:
         '''
         if self.break_solutions:
             tqdm.write('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
-                       (self.complete, self.total_score, self.total_penalty))
+                       (self.complete, self.total_score, self.total_penalty), file=TQDM_FILE)
             # Print the solutions
             for oligo_key in self.break_solutions:
                 # Print solution for oligo
-                tqdm.write('Solution for oligo: (%d,%d,%d)' % oligo_key)
+                tqdm.write('Solution for oligo: (%d,%d,%d)' % oligo_key, file=TQDM_FILE)
                 if self.break_solutions[oligo_key]:
                     self.break_solutions[oligo_key].print_solution()
 
@@ -241,7 +243,7 @@ class GroupBreaksolution:
             # If the solution doesnt exist move to next break solution
             if not break_solution:
                 if verbose:
-                    tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0], key[1], key[2]))
+                    tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0], key[1], key[2]), file=TQDM_FILE)
                 self.complete = False
                 continue
 
@@ -586,7 +588,10 @@ class AutoBreak:
 
         # If the array is empty, quit
         if len(results_summary) == 0:
-            sys.exit('SOLUTION DOESNT EXIST')
+            tqdm.write('SOLUTION DOESN\'T EXIST', file=TQDM_FILE)
+            if TQDM_FILE:
+                TQDM_FILE.close()
+            sys.exit()
 
         # Create writer
         writer      = pandas.ExcelWriter(self.summary_excel_file, engine='openpyxl')
@@ -873,7 +878,7 @@ class AutoBreak:
 
         for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
                         dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}',
-                        file=TQDM_FILE):
+                        file=TQDM_PROGRESS_BAR_FILE):
 
             # Set the current offset
             current_offset = (start_offset+itr) % self.origami.scaffolds[0].length()
@@ -905,7 +910,7 @@ class AutoBreak:
 
         for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
                         dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}',
-                        file=TQDM_FILE):
+                        file=TQDM_PROGRESS_BAR_FILE):
 
             # Set the current offset
             current_offset = (start_offset+itr) % self.origami.scaffolds[0].length()
@@ -958,7 +963,7 @@ class AutoBreak:
         '''
         for oligo_group in tqdm(self.origami.oligo_groups, desc='Main loop ',
                                 dynamic_ncols=True, bar_format='{l_bar}{bar}',
-                                file=TQDM_FILE):
+                                file=TQDM_PROGRESS_BAR_FILE):
 
             # Sort oligos by length
             oligo_group.sort_oligos_by_length(reverse=True)
@@ -966,7 +971,7 @@ class AutoBreak:
             # Create solutions via stepwise approach
             oligo_group.create_stepwise_oligo_solutions(self.NUM_OLIGO_SOLUTIONS, self.NUM_GLOBAL_SOLUTIONS,
                                                         self.optim_pick_method, self.optim_shuffle_oligos,
-                                                        verbose=self.verbose_output, tqdm_file=TQDM_FILE)
+                                                        verbose=self.verbose_output)
 
             # Remove incomplete solutions
             oligo_group.remove_incomplete_solutions()
@@ -1148,7 +1153,7 @@ class AutoBreak:
         '''
         for oligo in self.origami.oligos['staple']:
             if not oligo.dont_break:
-                oligo.generate_shortest_paths(self.NUM_OLIGO_SOLUTIONS, verbose=self.verbose_output, tqdm_file=TQDM_FILE)
+                oligo.generate_shortest_paths(self.NUM_OLIGO_SOLUTIONS, verbose=self.verbose_output)
                 oligo.remove_penalized_solutions()
 
     def combine_oligo_solutions(self):
@@ -1208,7 +1213,7 @@ class AutoBreak:
                        ' - TotalProb:%-5.2f' % (complete_solution.total_prob) +
                        ' - TotalScore:%-5.2f' % (complete_solution.total_score) +
                        ' - TotalNormScore:%-5.2f' % (complete_solution.total_norm_score) +
-                       ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty))
+                       ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty), file=TQDM_FILE)
 
         # Assign best solution
         if len(self.sorted_complete_solutions) > 0:
@@ -1242,7 +1247,10 @@ class AutoBreak:
         Oligo breaking routine
         '''
         if self.best_complete_solution is None:
-            sys.exit('SOLUTION DOESNT EXIST!')
+            tqdm.write('SOLUTION DOESN\'T EXIST!', file=TQDM_FILE)
+            if TQDM_FILE:
+                TQDM_FILE.close()
+            sys.exit()
 
         for key in self.best_complete_solution.group_solutions:
             # Break group solution
@@ -2158,9 +2166,6 @@ def main():
     parser.add_argument("-seed",   "--seed",  type=int, default=0,
                         help="Random seed")
 
-    parser.add_argument("-notqdm", "--notqdm", action='store_true',
-                        help="Disable tqdm progress bar output.")
-
     args = parser.parse_args()
 
     # Check if the required arguments are passed to the code
@@ -2184,7 +2189,6 @@ def main():
     write_all_results       = args.writeall
     shuffle_oligos          = not args.sort
     npermute                = args.npermute
-    notqdm                  = args.notqdm
 
     # Create args dictionary
     args_dict = {'input': args.input,
@@ -2202,15 +2206,7 @@ def main():
                  'permute': args.permute,
                  'npermute': args.npermute,
                  'writeall': args.writeall,
-                 'sort': args.sort,
-                 'notqdm': args.notqdm}
-
-    # Set tqdm.file to /dev/null if progress bars are not wanted
-    global TQDM_FILE
-    if notqdm:
-        TQDM_FILE = open(os.devnull, 'w')
-    else:
-        TQDM_FILE = None
+                 'sort': args.sort}
 
     # Check if input file exists
     if not os.path.isfile(input_filename):
@@ -2219,11 +2215,25 @@ def main():
     # Set random seed in order to get the same results with the same set of parameters
     random.seed(random_seed)
 
-    # Create Origami object
-    new_origami = origamidesign.Origami()
-
     # Create Autobreak object and make cross assignments
     new_autobreak = AutoBreak()
+
+    # Set output directory
+    new_autobreak.set_output_directory(input_filename, output_directory)
+
+    # Set output files
+    global TQDM_PROGRESS_BAR_FILE, TQDM_FILE
+
+    if verbose_output:
+        TQDM_PROGRESS_BAR_FILE  = None
+        TQDM_FILE               = None
+    else:
+        TQDM_PROGRESS_BAR_FILE  = open(os.devnull, 'w')
+        tqdm_file_path          = os.path.join(new_autobreak.output_directory, 'stdout.txt')
+        TQDM_FILE               = open(tqdm_file_path, 'w')
+
+    # Create Origami object
+    new_origami = origamidesign.Origami(tqdm_file=TQDM_FILE, tqdm_progress_bar_file=TQDM_PROGRESS_BAR_FILE)
 
     # Store args
     new_autobreak.args_dict = args_dict
@@ -2255,9 +2265,6 @@ def main():
 
     # Set verbose parameter
     new_autobreak.set_verbose_output(verbose_output)
-
-    # Set output directory
-    new_autobreak.set_output_directory(input_filename, output_directory)
 
     # Set write all flag
     new_autobreak.set_write_all_results(write_all_results)
@@ -2371,3 +2378,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    if TQDM_FILE:
+        TQDM_FILE.close()
