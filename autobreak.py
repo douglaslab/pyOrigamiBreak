@@ -95,9 +95,11 @@ class OligoBreakSolution:
         '''
         if self.breaks:
             tqdm.write('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" %
-                       (current_break.key) for current_break in self.breaks]))
+                       (current_break.key) for current_break in self.breaks]),
+                       file=self.origami.tqdm_output_file)
             tqdm.write('Edge length/weight: '+'->'.join(['(%d / %.1e)' %
-                       (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]))
+                       (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]),
+                       file=self.origami.tqdm_output_file)
 
     def reset_temp_neighbor_constraints(self):
         '''
@@ -178,6 +180,7 @@ class GroupBreaksolution:
         self.total_penalty      = 0
         self.total_dsDNA_length = 0
         self.complete           = True
+        self.origami            = None
 
     def get_cvs_rows(self):
         cvs_writer_rows = []
@@ -215,11 +218,13 @@ class GroupBreaksolution:
         '''
         if self.break_solutions:
             tqdm.write('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
-                       (self.complete, self.total_score, self.total_penalty))
+                       (self.complete, self.total_score, self.total_penalty),
+                       file=self.origami.tqdm_output_file)
             # Print the solutions
             for oligo_key in self.break_solutions:
                 # Print solution for oligo
-                tqdm.write('Solution for oligo: (%d,%d,%d)' % oligo_key)
+                tqdm.write('Solution for oligo: (%d,%d,%d)' % oligo_key,
+                           file=self.origami.tqdm_output_file)
                 if self.break_solutions[oligo_key]:
                     self.break_solutions[oligo_key].print_solution()
 
@@ -240,7 +245,8 @@ class GroupBreaksolution:
             # If the solution doesnt exist move to next break solution
             if not break_solution:
                 if verbose:
-                    tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0], key[1], key[2]))
+                    tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0], key[1], key[2]),
+                               file=self.origami.tqdm_output_file)
                 self.complete = False
                 continue
 
@@ -871,7 +877,8 @@ class AutoBreak:
                 final_itr = nitr
 
         for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
-                        dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}'):
+                        dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}',
+                        file=self.origami.tqdm_output_file):
 
             # Set the current offset
             current_offset = (start_offset+itr) % self.origami.scaffolds[0].length()
@@ -902,7 +909,8 @@ class AutoBreak:
                 final_itr = nitr
 
         for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
-                        dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}'):
+                        dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}',
+                        file=self.origami.tqdm_output_file):
 
             # Set the current offset
             current_offset = (start_offset+itr) % self.origami.scaffolds[0].length()
@@ -954,7 +962,8 @@ class AutoBreak:
         Main function for solution determination
         '''
         for oligo_group in tqdm(self.origami.oligo_groups, desc='Main loop ',
-                                dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+                                dynamic_ncols=True, bar_format='{l_bar}{bar}',
+                                file=self.origami.tqdm_output_file):
 
             # Sort oligos by length
             oligo_group.sort_oligos_by_length(reverse=True)
@@ -1204,7 +1213,8 @@ class AutoBreak:
                        ' - TotalProb:%-5.2f' % (complete_solution.total_prob) +
                        ' - TotalScore:%-5.2f' % (complete_solution.total_score) +
                        ' - TotalNormScore:%-5.2f' % (complete_solution.total_norm_score) +
-                       ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty))
+                       ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty),
+                       file=self.origami.tqdm_output_file)
 
         # Assign best solution
         if len(self.sorted_complete_solutions) > 0:
@@ -2023,6 +2033,7 @@ class BreakNode:
                 new_break_solution.final_break  = self
                 new_break_solution.break_paths  = new_break.traverse_path + [new_break_path]
                 new_break_solution.score        = self.score
+                new_break_solution.origami      = self.origami
 
                 # Initialize the solution
                 new_break_solution.initialize()
@@ -2139,8 +2150,8 @@ def main():
     parser.add_argument("-dontb",   "--dontbreak",  type=int,
                         help="Dont break oligos less than the length specified", default=0)
 
-    parser.add_argument("-v",   "--verbose",  action='store_true',
-                        help="Verbose output")
+    parser.add_argument("-verbose",   "--verbose",  type=int, choices=[0,1,2],
+                        help="Verbose output", default=0)
 
     parser.add_argument("-permute",   "--permute",  action='store_true',
                         help="Permute sequence")
@@ -2238,10 +2249,14 @@ def main():
     new_autobreak.preprocess_optim_params()
 
     # Set verbose parameter
-    new_autobreak.set_verbose_output(verbose_output)
+    new_autobreak.set_verbose_output(verbose_output == 2)
 
     # Set output directory
     new_autobreak.set_output_directory(input_filename, output_directory)
+
+    # Stdout log file
+    if args.verbose == 0:
+        new_origami.set_tqdm_output_file(open(new_autobreak.output_directory+'/stdout.log','w'))
 
     # Set write all flag
     new_autobreak.set_write_all_results(write_all_results)

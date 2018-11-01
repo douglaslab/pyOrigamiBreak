@@ -92,6 +92,7 @@ class OligoGroup:
             # Initialize group break solution
             new_group_solution = autobreak.GroupBreaksolution()
             new_group_solution.break_solutions = {}
+            new_group_solution.origami = self.origami
 
             for oligo in self.oligos:
                 # Randomly pick one solution for an oligo
@@ -117,7 +118,8 @@ class OligoGroup:
 
         # Number of solutions
         for i in tqdm(range(num_global_solutions), desc='Global loop', leave=False,
-                      dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+                      dynamic_ncols=True, bar_format='{l_bar}{bar}', 
+                      file=self.origami.tqdm_output_file):
 
             # Reset temporary neighbor constraints
             self.reset_temp_neighbor_constraints()
@@ -125,6 +127,7 @@ class OligoGroup:
             # Initialize group break solution
             new_group_solution = autobreak.GroupBreaksolution()
             new_group_solution.break_solutions = {}
+            new_group_solution.origami = self.origami
 
             # Shuffle oligos
             if shuffle_oligos:
@@ -132,7 +135,8 @@ class OligoGroup:
 
             # Iterate over every oligo
             for oligo in tqdm(self.oligos, desc='Oligo loop', leave=False,
-                              dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+                              dynamic_ncols=True, bar_format='{l_bar}{bar}',
+                              file=self.origami.tqdm_output_file):
 
                 # If oligo has dont break flag, skip
                 if oligo.dont_break:
@@ -553,7 +557,8 @@ class Oligo:
 
         # Show oligo being processed - use tdqm
         if verbose:
-            tqdm.write('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)))
+            tqdm.write('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)),
+                        file=self.origami.tqdm_output_file)
 
         if self.dont_break:
             self.break_solutions = []
@@ -571,7 +576,8 @@ class Oligo:
 
         if self.circular:
             for current_break in tqdm(self.breaks, desc='Shortest path loop ',
-                                      dynamic_ncols=True, bar_format='{l_bar}{bar}'):
+                                      dynamic_ncols=True, bar_format='{l_bar}{bar}',
+                                      file=self.origami.tqdm_output_file):
 
                 # Check the constraints. If not allowed to break, skip
                 if current_break.dont_break or current_break.dont_break_temp:
@@ -655,6 +661,16 @@ class Origami:
         self.corrected_offset   = 0   
         self.sequence_start_pos = None
         self.current_start_pos  = None
+
+        # tqdm output file
+        self.tqdm_output_file   = None
+
+
+    def set_tqdm_output_file(self, filename=None):
+        '''
+        Set tqdm output file
+        '''
+        self.tqdm_output_file = filename
 
     def warn_circular_scaffold(self):
         '''
@@ -1860,6 +1876,9 @@ class Origami:
 
                 # Assign group key
                 new_oligo_group.key    = group_key
+
+                # Assign origami to oligo group
+                new_oligo_group.origami = self
 
                 # Update oligo group key
                 group_key += 1
