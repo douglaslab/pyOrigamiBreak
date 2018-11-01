@@ -2151,7 +2151,7 @@ def main():
                         help="Dont break oligos less than the length specified", default=0)
 
     parser.add_argument("-verbose",   "--verbose",  type=int, choices=[0,1,2],
-                        help="Verbose output", default=0)
+                        help="Verbose output", default=1)
 
     parser.add_argument("-permute",   "--permute",  action='store_true',
                         help="Permute sequence")
