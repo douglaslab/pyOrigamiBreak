@@ -18,6 +18,7 @@ import glob
 import pandas
 import openpyxl
 import matplotlib
+import csv
 
 import origamidesign
 
@@ -564,6 +565,10 @@ class AutoBreak:
         self.autobreak_excel_file           = None
         self.summary_excel_file             = None
 
+        # CVS versions of the output files
+        self.autobreak_csv_file           = None
+        self.summary_csv_file             = None
+
     def get_results_summary(self):
         '''
         Get results summary
@@ -779,6 +784,10 @@ class AutoBreak:
         self.results_excel_file   = self.output_directory+'/'+root+'.xlsx'
         self.autobreak_excel_file = self.output_directory+'/'+root+'_autobreak.xlsx'
         self.summary_excel_file   = self.output_directory+'/'+root+'_summary.xlsx'
+
+        # Restuls cvs file
+        self.autobreak_csv_file = self.output_directory+'/'+root+'_autobreak.csv'
+        self.summary_csv_file   = self.output_directory+'/'+root+'_summary.csv'
 
     def write_part_to_json(self, filename, legacy_option=True):
         '''
@@ -1146,6 +1155,17 @@ class AutoBreak:
         # Save writer and close
         writer.save()
         writer.close()
+
+        # Write the csv files
+        with open(self.autobreak_csv_file, 'w', newline='') as csvfile:
+            autobreakwriter = csv.writer(csvfile, delimiter=',')
+            autobreakwriter.writerow(cvs_header)
+            autobreakwriter.writerows(self.final_cvs_rows)
+        
+        with open(self.summary_csv_file, 'w', newline='') as csvfile:
+            autobreakwriter = csv.writer(csvfile, delimiter=',')
+            autobreakwriter.writerows(self.final_summary_data)
+
 
     def create_oligo_solutions(self):
         '''
