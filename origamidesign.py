@@ -658,13 +658,19 @@ class Origami:
 
         # DNA Sequence parameters
         self.sequence_offset    = None
-        self.corrected_offset   = 0   
+        self.corrected_offset   = 0
         self.sequence_start_pos = None
         self.current_start_pos  = None
 
         # tqdm output file
         self.tqdm_output_file   = None
+        self.std_output_file    = None
 
+    def set_std_output_file(self, filename=None):
+        '''
+        Set tqdm output file
+        '''
+        self.std_output_file = filename
 
     def set_tqdm_output_file(self, filename=None):
         '''

@@ -1234,7 +1234,7 @@ class AutoBreak:
                        ' - TotalScore:%-5.2f' % (complete_solution.total_score) +
                        ' - TotalNormScore:%-5.2f' % (complete_solution.total_norm_score) +
                        ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty),
-                       file=self.origami.tqdm_output_file)
+                       file=self.origami.std_output_file)
 
         # Assign best solution
         if len(self.sorted_complete_solutions) > 0:
@@ -2170,7 +2170,7 @@ def main():
     parser.add_argument("-dontb",   "--dontbreak",  type=int,
                         help="Dont break oligos less than the length specified", default=0)
 
-    parser.add_argument("-verbose",   "--verbose",  type=int, choices=[0,1,2],
+    parser.add_argument("-verbose",   "--verbose",  type=int, choices=[0, 1, 2],
                         help="Verbose output", default=1)
 
     parser.add_argument("-permute",   "--permute",  action='store_true',
@@ -2276,7 +2276,14 @@ def main():
 
     # Stdout log file
     if args.verbose == 0:
-        new_origami.set_tqdm_output_file(open(new_autobreak.output_directory+'/stdout.log','w'))
+        # log file
+        log_file = new_autobreak.output_directory+'/stdout.log'
+        new_origami.set_tqdm_output_file(open(os.devnull, 'w'))
+
+        # Direct stout and stderr to log file
+        sys.stdout = open(log_file, 'w')
+        sys.stderr = sys.stdout
+        new_origami.set_std_output_file(sys.stdout)
 
     # Set write all flag
     new_autobreak.set_write_all_results(write_all_results)
