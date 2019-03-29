@@ -1290,6 +1290,9 @@ def main():
     # Create a project
     new_project = Project()
 
+    # Set scaffold polarity
+    new_project.set_scaffold_polarity(args.reverse)
+
     # Get scaffold sequence
     scaffold_sequence      = new_project.read_sequence(args.seq)
 
@@ -1304,9 +1307,6 @@ def main():
 
     # Set Echo replicates
     new_project.set_nreps_ECHO(args.nreps)
-
-    # Set scaffold polarity
-    new_project.set_scaffold_polarity(args.reverse)
 
     # Check if sequence file exists
     if len(scaffold_sequence) == 0:
@@ -1339,7 +1339,10 @@ def main():
         # Get staples
         # Create structure object
         new_structure = Structure()
-        new_structure.offset = args.offset or part.getSequenceOffset()
+
+        # Set the project for structure
+        new_structure.project = new_project
+        new_structure.offset  = args.offset or part.getSequenceOffset()
 
         # Apply the offset
         new_structure.scaffold_sequence = (new_project.scaffold_sequence[new_structure.offset:] +
