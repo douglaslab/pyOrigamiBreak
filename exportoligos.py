@@ -51,6 +51,13 @@ class Project:
 
         self.noskip         = False
         self.nreps_ECHO     = 1
+        self.reverse_scaf   = False
+
+    def set_scaffold_polarity(self, reverse=False):
+        '''
+        Set scaffold polarity
+        '''
+        self.reverse_scaf = reverse
 
     def set_nreps_ECHO(self, nreps=1):
         '''
@@ -168,7 +175,17 @@ class Project:
             # Convert to upper case
             self.scaffold_sequence = self.scaffold_sequence.upper()
 
+        # Reverse sequence
+        if self.reverse_scaf:
+            self.reverse_scaffold()
+
         return self.scaffold_sequence
+
+    def reverse_scaffold(self):
+        '''
+        Reverse scaffold sequence
+        '''
+        self.scaffold_sequence = self.scaffold_sequence[::-1]
 
     def parse_input_files(self, input_fnames):
         '''
@@ -978,6 +995,10 @@ class Structure:
                 else:
                     new_oligo.sequence += strand.sequence().replace(' ', empty_ch)
 
+            # If necessary reverse the sequence
+            if self.project.reverse_scaf:
+                new_oligo.reverse_sequence()
+
             new_oligo.key       = '-'.join([str(new_oligo.vh5p),
                                             str(new_oligo.idx5p),
                                             str(new_oligo.vh3p),
@@ -1167,6 +1188,9 @@ class Oligo:
 
         self.stock            = None
 
+    def reverse_sequence(self):
+        self.sequence = self.sequence[::-1]
+
     def _make_plate96_row(self):
         '''
         Make 96 well plate row for the oligo
@@ -1243,6 +1267,9 @@ def main():
     parser.add_argument("-noskip", "--noskip", action='store_true',
                         help="Do not skip wells for 96 well plate format")
 
+    parser.add_argument("-reverse", "--reverse", action='store_true',
+                        help="Reverse the scaffold polarity")
+
     parser.add_argument("-ECHOspace", "--ECHOspace", action='store_true',
                         help="Keep each structure in a seperate row on ECHO destination plate")
 
@@ -1277,6 +1304,9 @@ def main():
 
     # Set Echo replicates
     new_project.set_nreps_ECHO(args.nreps)
+
+    # Set scaffold polarity
+    new_project.set_scaffold_polarity(args.reverse)
 
     # Check if sequence file exists
     if len(scaffold_sequence) == 0:
