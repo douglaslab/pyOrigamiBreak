@@ -18,6 +18,7 @@ import utilities
 import openpyxl
 import collections
 import numpy as np
+import yaml
 
 
 # GLOBALS
@@ -879,6 +880,7 @@ class Structure:
     '''
     def __init__(self):
         self.project        = None
+        self.part           = None
         self.structure_name = ''
         self.structure_id   = ''
         self.json_file      = ''
@@ -957,7 +959,111 @@ class Structure:
         for key in self.oligos_dict:
             self.oligos_dict[key].bitlist = [0]*num_structures
 
-    def read_oligos(self, cadnano_part, scaffold_sequence, add_T=False):
+    def is_crossover(self, current_key=None, neighbor_key=None):
+        '''
+        Check if the connection is crossover
+        '''
+
+        # Get the current and neighbor keys
+        if current_key and neighbor_key:
+            current_idNum, current_idx, current_direction = current_key[:3]
+            neighbor_idNum, neighbor_idx, neighbor_direction = neighbor_key[:3]
+        else:
+            return False
+
+        # Determine index ids
+        if current_direction == -1 and neighbor_direction == +1:
+            list_index = 1
+            direction_index = 1
+        elif current_direction == +1 and neighbor_direction == -1:
+            list_index = 2
+            direction_index = 0
+        else:
+            return False
+
+        # Get neighbor list
+        neighbor_lists, pairs = self.part.potentialCrossoverMap(current_idNum, current_idx)
+
+        # Check if the neighbor vh exists
+        if neighbor_idNum not in neighbor_lists:
+            return False
+
+        # Check if the neighbor is in the list
+        results = [item[0] == current_idx and neighbor_idx in item[list_index]
+                   for item in neighbor_lists[neighbor_idNum][direction_index]]
+
+        # Return true if the sum is more than 1
+        if sum(results) > 0:
+            return True
+        else:
+            return False
+
+    def has_strand_at(self, idNum, idx, direction):
+        '''
+        Check if there is strand at given location
+        '''
+        (fwd, rev) = self.part.hasStrandAtIdx(idNum, idx)
+        if direction == 1:
+            return fwd
+        else:
+            return rev
+
+    def get_oligo_sequence(self, cadnano_oligo, empty_ch='?', welding=False):
+        '''
+        Get oligo sequence
+        '''
+        # Get the strand generator
+        oligo_sequence  = ''
+
+        # Create generator
+        generator = cadnano_oligo.strand5p().generator3pStrand()
+
+        # Iterate over the strands
+        for strand in generator:
+            # Strand sequence
+            strand_sequence = ''
+
+            # Set strand sequence
+            if strand.totalLength() != len(strand.sequence()):
+                strand_sequence = strand.length()*' '
+            else:
+                strand_sequence = strand.sequence()
+
+                # Welding option only applies to this case
+                if welding:
+
+                    # Get direction
+                    current_direction = 2*int(strand.isForward()) - 1
+
+                    # Get idNum
+                    current_idNum = strand.idNum()
+
+                    # 5prime idx
+                    idx5p    = strand.idx5Prime()
+
+                    # next idx
+                    prev_idx = idx5p - current_direction
+
+                    # 3prime idx
+                    idx3p    = strand.idx3Prime()
+
+                    # next idx
+                    next_idx = idx3p + current_direction
+
+                    # Check if strand exists at previous position, then prepend T
+                    if self.has_strand_at(current_idNum, prev_idx, current_direction):
+                        strand_sequence = 'T' + strand_sequence
+
+                    # Check if strand exists at next position, then append T
+                    if self.has_strand_at(current_idNum, next_idx, current_direction):
+                        strand_sequence = strand_sequence + 'T'
+
+            # Update oligo sequence
+            oligo_sequence += strand_sequence
+
+        return oligo_sequence.replace(' ', empty_ch)
+
+    def read_oligos(self, cadnano_part, scaffold_sequence, add_T=False, welding=False):
         self.cadnano_oligos = cadnano_part.oligos()
         self.cadnano_oligos = sorted(self.cadnano_oligos, key=lambda x: x.length(), reverse=True)
 
@@ -979,21 +1085,13 @@ class Structure:
 
             # Make new oligo
             new_oligo           = Oligo()
-            new_oligo.length    = oligo.length()
             new_oligo.vh5p      = strand5p.idNum()
             new_oligo.vh3p      = strand3p.idNum()
             new_oligo.idx5p     = strand5p.idx5Prime()
             new_oligo.idx3p     = strand3p.idx3Prime()
             new_oligo.color     = oligo.getColor()
-            new_oligo.sequence  = ''
-
-            # Get the strand generator
-            generator           = oligo.strand5p().generator3pStrand()
-            for strand in generator:
-                if strand.totalLength() != len(strand.sequence()):
-                    new_oligo.sequence += strand.length()*empty_ch
-                else:
-                    new_oligo.sequence += strand.sequence().replace(' ', empty_ch)
+            new_oligo.sequence  = self.get_oligo_sequence(oligo, empty_ch, welding)
+            new_oligo.length    = len(new_oligo.sequence)
 
             # If necessary reverse the sequence
             if self.project.reverse_scaf:
@@ -1239,6 +1337,14 @@ def parse_input_files(input_fnames):
     return json_files
 
 
+def write_config_file(fname, args_dict):
+    '''
+    Dump parameters into ymal config file
+    '''
+    with open(fname, 'w') as outfile:
+        yaml.dump(args_dict, outfile, default_flow_style=False)
+
+
 def main():
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -1249,7 +1355,7 @@ def main():
     parser.add_argument("-o",   "--output",    type=str,
                         help="Output directory", default=None)
 
-    parser.add_argument("-seq",   "--seq", type=str,
+    parser.add_argument("-seq",   "--sequence", type=str,
                         help="Scaffold sequence file")
 
     parser.add_argument("-nreps", "--nreps", type=int, default=1,
@@ -1270,6 +1376,9 @@ def main():
     parser.add_argument("-reverse", "--reverse", action='store_true',
                         help="Reverse the scaffold polarity")
 
+    parser.add_argument("-welding", "--welding", action='store_true',
+                        help="Add T's for welding")
+
     parser.add_argument("-ECHOspace", "--ECHOspace", action='store_true',
                         help="Keep each structure in a seperate row on ECHO destination plate")
 
@@ -1279,6 +1388,19 @@ def main():
     if args.input is None:
         parser.print_help()
         sys.exit('Input file does not exist!')
+
+    # Create args dictionary
+    args_dict = {'input':     args.input,
+                 'output':    args.output,
+                 'sequence':  args.sequence,
+                 'nreps':     args.nreps,
+                 'header':    args.header,
+                 'offset':    args.offset,
+                 'addT':      args.addT,
+                 'noskip':    args.noskip,
+                 'reverse':   args.reverse,
+                 'welding':   args.welding,
+                 'ECHOspace': args.ECHOspace}
 
     # Get json files
     json_files = parse_input_files(args.input)
@@ -1294,7 +1416,7 @@ def main():
     new_project.set_scaffold_polarity(args.reverse)
 
     # Get scaffold sequence
-    scaffold_sequence      = new_project.read_sequence(args.seq)
+    scaffold_sequence      = new_project.read_sequence(args.sequence)
 
     # Add json files
     new_project.add_json_files(json_files)
@@ -1316,6 +1438,10 @@ def main():
     xlsx_output_96well  = new_project.output_directory+'/oligos_96well.xlsx'
     xlsx_output_384well = new_project.output_directory+'/oligos_384well.xlsx'
     echo_output_384well = new_project.output_directory+'/echo_384well.csv'
+    config_file         = new_project.output_directory+'/args.yaml'
+
+    # Write config file
+    write_config_file(config_file, args_dict)
 
     # Initialize cadnano
     app = cadnano.app()
@@ -1340,6 +1466,9 @@ def main():
         # Create structure object
         new_structure = Structure()
 
+        # Set part
+        new_structure.part = part
+
         # Set the project for structure
         new_structure.project = new_project
         new_structure.offset  = args.offset or part.getSequenceOffset()
@@ -1347,7 +1476,7 @@ def main():
         # Apply the offset
         new_structure.scaffold_sequence = (new_project.scaffold_sequence[new_structure.offset:] +
                                            new_project.scaffold_sequence[:new_structure.offset])
-        new_structure.oligos_dict  = new_structure.read_oligos(part, new_structure.scaffold_sequence, args.addT)
+        new_structure.oligos_dict  = new_structure.read_oligos(part, new_structure.scaffold_sequence, args.addT, args.welding)
         new_structure.structure_id = i
         new_structure.project      = new_project
 

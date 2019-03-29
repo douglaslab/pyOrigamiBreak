@@ -457,7 +457,6 @@ class AutoBreak:
         self.json_input                      = None
 
         # Constraints
-        self.MAX_OLIGO_LENGTH                = 60
         self.UPPER_BOUND                     = 60
         self.LOWER_BOUND                     = 21
 
@@ -640,6 +639,12 @@ class AutoBreak:
         Set lower bound
         '''
         self.LOWER_BOUND = min_length
+
+    def set_upper_bound(self, max_length=60):
+        '''
+        Set lower bound
+        '''
+        self.UPPER_BOUND = max_length
 
     def set_readonly(self, read_only=False):
         '''
@@ -1161,11 +1166,10 @@ class AutoBreak:
             autobreakwriter = csv.writer(csvfile, delimiter=',')
             autobreakwriter.writerow(cvs_header)
             autobreakwriter.writerows(self.final_cvs_rows)
-        
+
         with open(self.summary_csv_file, 'w', newline='') as csvfile:
             autobreakwriter = csv.writer(csvfile, delimiter=',')
             autobreakwriter.writerows(self.final_summary_data)
-
 
     def create_oligo_solutions(self):
         '''
@@ -2167,6 +2171,9 @@ def main():
     parser.add_argument("-minlength",   "--minlength",     type=int,
                         help="Minimum staple length", default=21)
 
+    parser.add_argument("-maxlength",   "--maxlength",     type=int,
+                        help="Maximum staple length", default=60)
+
     parser.add_argument("-dontb",   "--dontbreak",  type=int,
                         help="Dont break oligos less than the length specified", default=0)
 
@@ -2219,6 +2226,7 @@ def main():
                  'func': args.func,
                  'nsol': args.nsol,
                  'minlength': args.minlength,
+                 'maxlength': args.maxlength,
                  'dontb': args.dontbreak,
                  'verbose': args.verbose,
                  'seed': args.seed,
@@ -2293,6 +2301,9 @@ def main():
 
     # Set lower bound for oligo lengths
     new_autobreak.set_lower_bound(args.minlength)
+
+    # Set upper bound for oligo lengths
+    new_autobreak.set_upper_bound(args.maxlength)
 
     # Set read only setting
     new_autobreak.set_readonly(read_only)
