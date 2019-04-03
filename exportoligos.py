@@ -30,47 +30,141 @@ class Project:
     Origami Project class that keeps multiple structures
     '''
     def __init__(self):
-        self.json_files     = []
-        self.structures     = []
-        self.plates_96well  = []
-        self.plates_384well = []
-        self.date           = ''
-        self.author         = ''
-        self.stocks         = {}
-        self.oligos_list    = []
-        self.oligos_dict    = {}
+        self.json_files      = []
+        self.structures      = []
+        self.structures_dict = {}
+        self.plates_96well   = []
+        self.plates_384well  = []
+        self.date            = ''
+        self.author          = ''
+        self.stocks          = {}
+        self.oligos_list     = []
+        self.oligos_dict     = {}
 
-        self.stock_counts   = {}    # Number of stocks
-        self.stock_keys     = []
-        self.total_bases    = 0     # Total number of bases
-        self.num_structures = 0
-        self.wb_96well      = None  # 96  well plate workbook object
-        self.wb_384well     = None  # 384 well plate workbook object
+        self.stock_counts    = {}    # Number of stocks
+        self.stock_keys      = []
+        self.total_bases     = 0     # Total number of bases
+        self.num_structures  = 0
+        self.wb_96well       = None  # 96  well plate workbook object
+        self.wb_384well      = None  # 384 well plate workbook object
 
-        self.echo_input     = []
-        self.echo_res_input = []
+        self.echo_input      = []
+        self.echo_res_input  = []
 
-        self.noskip         = False
-        self.nreps_ECHO     = 1
-        self.reverse_scaf   = False
+        # Concentration and volume parameters
+        self.oligoconc          = 100         # In uM
+        self.stock_conc_384well = 250         # In nM
+        self.stock_conc_96well  = 250         # In nM
 
-    def set_scaffold_polarity(self, reverse=False):
-        '''
-        Set scaffold polarity
-        '''
-        self.reverse_scaf = reverse
+        # 96well parameter
+        self.vol96               = 400     # In ul
 
-    def set_nreps_ECHO(self, nreps=1):
-        '''
-        Set nreps_ECHO
-        '''
-        self.nreps_ECHO = nreps
+        self.reverse_scaf        = False
+        self.noskip              = False
+        self.ECHOnreps           = 1
+        self.ECHOspace           = False
+        self.ECHOvol             = 20      # In ul
+        self.ECHOreservoirtype   = ''
+        self.ECHOsourcetype      = ''
+        self.ECHOdesttype        = ''
+        self.ECHOdestfile        = None
+        self.ECHOdispense        = 50      # In nl
 
-    def set_noskip(self, no_skip=False):
+    def set_params(self, args_dict):
         '''
-        Set noskip parameter
+        Set echo params
         '''
-        self.noskip = no_skip
+        self.reverse_scaf = args_dict['reverse']
+        self.noskip       = args_dict['noskip']
+
+        self.ECHOvol             = args_dict['ECHOvol']
+        self.ECHOspace           = args_dict['ECHOspace']
+        self.ECHOnreps           = args_dict['ECHOnreps']
+        self.ECHOreservoirtype   = args_dict['ECHOreservoirtype']
+        self.ECHOsourcetype      = args_dict['ECHOsourcetype']
+        self.ECHOdesttype        = args_dict['ECHOdesttype']
+        self.ECHOdestfile        = args_dict['ECHOdestfile']
+
+        self.vol96     = args_dict['vol96']
+        self.oligoconc = args_dict['oligoconc']
+
+    def _read_dest_plates(self, fname):
+        '''
+        Read destination plates
+        '''
+
+        # Initialize the labels and destination plate list
+        self.sheet_labels = []
+
+        # Destination plates
+        self.plates_dest = []
+
+        # Plate counter
+        plate_counter = 0
+
+        # Delete the first sheet
+        self.wb_384well.remove(self.wb_384well.active)
+
+        if os.path.isfile(fname):
+            wb = openpyxl.load_workbook(filename=fname)
+
+            # Loop over the sheets
+            for dest_sheet in wb:
+
+                # Structure handle
+                structure_exists = False
+
+                # Add new sheet label
+                self.sheet_labels.append(dest_sheet.title)
+
+                # Create sheet
+                ws_current = self.wb_384well.create_sheet(title=dest_sheet.title)
+
+                # Create new 96well plate
+                current_plate = Plate()
+                current_plate.structures_dict  = {}
+                current_plate.structures_list  = []
+                current_plate.worksheet        = ws_current
+                current_plate.plate_label      = dest_sheet.title
+                current_plate.plate_id         = plate_counter
+                current_plate.set_dimensions()
+
+                # Update plate counter
+                plate_counter += 1
+
+                # Iterate over the cells in the worksheet
+                for colNum in range(1, current_plate.row_length + 1, 1):
+                    for rowNum in range(1, current_plate.col_length + 1, 1):
+                        # Get cell
+                        current_cell = dest_sheet.cell(row=rowNum, column=colNum)
+
+                        # If the cell has a value
+                        if current_cell.value:
+                            # Get the current coordinate
+                            well_id = current_cell.coordinate
+
+                            # Get structure name
+                            structure_name = current_cell.value
+
+                            # Check if the structure exits
+                            if structure_name in self.structures_dict:
+
+                                structure_exists = True
+
+                                # Get the structrue object
+                                current_structure = self.structures_dict[structure_name]
+
+                                # Assign stucture value
+                                ws_current[well_id] = structure_name
+
+                                # Current plate
+                                current_plate.structures_dict[well_id] = current_structure
+                                current_plate.structures_list.append(current_structure)
+
+                # If there is a valid structure in the current sheet
+                if structure_exists:
+                    # Add plate to destination plates list
+                    self.plates_dest.append(current_plate)
 
     def assign_color_counters(self):
         '''
@@ -128,6 +222,9 @@ class Project:
         Add new structure
         '''
         self.structures.append(new_structure)
+
+        # Add the structure to dictionary
+        self.structures_dict[new_structure.structure_name] = new_structure
 
         # Reset bits for the new structure
         new_structure.reset_bits(self.num_structures)
@@ -261,13 +358,63 @@ class Project:
             self.stocks[current_oligo.sortkey].count += 1
             self.stocks[current_oligo.sortkey].oligos_list.append(current_oligo)
 
-    def set_output_directory(self, output_directory=None):
+    def _write_info_sheet_96well(self):
+        '''
+        Write info sheet for 96well plate output
+        '''
+        ws_current = self.wb_96well.create_sheet(title='Info')
+
+        # Set column widths
+        ws_current.column_dimensions['A'].width = 40
+        ws_current.column_dimensions['B'].width = 20
+
+        # Append oligo concentration
+        ws_current.append(['Oligo Conc (um)', self.oligoconc])
+        # Append stock volume
+        ws_current.append(['Stock Vol (ul)', self.vol96])
+
+        # Calculate stock concentration
+        self.stock_conc_96well = self.oligoconc/self.vol96*1E3  # in nM
+
+        # ECHO dispense volume
+        ws_current.append(['Stock Concentration (nM)', '%.2f' % (self.stock_conc_96well)])
+
+    def _write_info_sheet_384well(self):
+        '''
+        Write info sheet for 384well plate output
+        '''
+        ws_current = self.wb_384well.create_sheet(title='Info')
+
+        # Set column widths
+        ws_current.column_dimensions['A'].width = 40
+        ws_current.column_dimensions['B'].width = 20
+
+        # Append oligo concentration
+        ws_current.append(['Oligo Conc (um)', self.oligoconc])
+
+        # Append stock volume
+        ws_current.append(['Stock Vol (ul)', self.ECHOvol])
+
+        # ECHO dispense volume
+        ws_current.append(['ECHO Dispense Vol (nl)', self.ECHOdispense])
+
+        # Calculate stock concentration
+        self.stock_conc_384well = self.oligoconc*self.ECHOdispense/self.ECHOvol  # in nM
+
+        # ECHO dispense volume
+        ws_current.append(['Stock Concentration (nM)', '%.2f' % (self.stock_conc_384well)])
+
+    def set_output_directory(self, output_directory=None, root_directory=None):
         '''
         Set output directory
         '''
         # Split first input file
         head, tail       = os.path.split(os.path.abspath(self.json_files[0]))
         root, ext        = os.path.splitext(tail)
+
+        # Set root directory
+        if root_directory is not None:
+            head = root_directory
 
         # Save the filename with head removed only tail
         self.input_tail     = tail
@@ -322,7 +469,9 @@ class Project:
                       'Source Well',
                       'Destination Plate Name',
                       'Destination Well',
-                      'Transfer Volume']
+                      'Transfer Volume',
+                      'Source Plate Type',
+                      'Destination Plate Type']
 
             self.echo_writer.writerow(header)
 
@@ -332,7 +481,9 @@ class Project:
                              echo_row['sourceWell'],
                              echo_row['destPlate'],
                              echo_row['destWell'],
-                             echo_row['volume']]
+                             echo_row['volume'],
+                             echo_row['sourcePlateType'],
+                             echo_row['destPlateType']]
                 self.echo_writer.writerow(echo_list)
 
     def prepare_ECHO_reservoir_input(self):
@@ -354,7 +505,8 @@ class Project:
             for well_id, current_structure in ordered_structures.items():
 
                 dest_echo_input = {'destPlate': dest_plate.plate_label,
-                                   'destWell': well_id}
+                                   'destWell': well_id,
+                                   'destPlateType': self.ECHOdesttype}
 
                 # Iterate over all the echo input entries for a structure
                 for echo_row in current_structure.echo_res_input:
@@ -406,7 +558,8 @@ class Project:
             for well_id, current_structure in ordered_structures.items():
 
                 dest_echo_input = {'destPlate': dest_plate.plate_label,
-                                   'destWell': well_id}
+                                   'destWell': well_id,
+                                   'destPlateType': self.ECHOdesttype}
 
                 # Iterate over all the echo input entries for a structure
                 for echo_row in current_structure.echo_input:
@@ -426,14 +579,8 @@ class Project:
             # Stock row
             current_structure.stock_row = [self.json_files[i]]
 
-            # Remove json extension
-            structure_name, file_ext = os.path.splitext(self.json_files[i])
-
-            # Assign structure name
-            current_structure.structure_name = structure_name
-
             # Starting H2O volume
-            current_structure.water_96well = 300
+            current_structure.water_96well = self.vol96
 
             # Stock keys for the structure
             current_structure.stock_keys = []
@@ -862,15 +1009,20 @@ class Project:
         self._color_structures_sheet_96well()
         self._write_stocks_sheet_96well()
         self._order_sheets_96well()
+        self._write_info_sheet_96well()
         self.save_sheets_96well(out_fname)
 
-    def write_oligos_384well(self, out_fname, plate_header='', ECHOspace=False):
+    def write_oligos_384well(self, out_fname, plate_header=''):
         '''
         Export oligos
         '''
         self._create_workbook_384well()
-        self._write_structure_sheet_384well(nreps=self.nreps_ECHO, addspace=ECHOspace)
+        if self.ECHOdestfile is not None:
+            self._read_dest_plates(self.ECHOdestfile)
+        else:
+            self._write_structure_sheet_384well(nreps=self.ECHOnreps, addspace=self.ECHOspace)
         self._write_plate_sheets_384well(plate_header)
+        self._write_info_sheet_384well()
         self.save_sheets_384well(out_fname)
 
 
@@ -894,6 +1046,13 @@ class Structure:
         self.echo_input     = []
         self.echo_res_input = []           # Echo reservoir input
         self.oligo_conc     = 200          # In uM
+
+    def set_ECHO_params(self):
+        '''
+        Set ECHO params from project
+        '''
+        self.echo_drop_vol = self.project.ECHOdispense
+        self.water_384well = self.project.ECHOvol*1E3
 
     def prepare_oligos_list(self):
         '''
@@ -933,7 +1092,8 @@ class Structure:
             # Prepare echo input
             self.echo_input.append({'sourcePlate': plate_label,
                                     'sourceWell': well_id,
-                                    'volume': volume})
+                                    'volume': volume,
+                                    'sourcePlateType': self.project.ECHOsourcetype})
 
     def get_echo_input(self):
         '''
@@ -945,12 +1105,17 @@ class Structure:
         '''
         Prepare ECHO reservoir input
         '''
-        self.water_384well  = 20000.0 - 1.0*len(self.oligos_list)*self.echo_drop_vol
+
+        # Get project parameters
+        self.set_ECHO_params()
+
+        self.water_384well  = self.water_384well - 1.0*len(self.oligos_list)*self.echo_drop_vol
 
         # Prepare reservoir input
         self.echo_res_input = [{'sourcePlate': 'Reservoir',
                                 'sourceWell': 'A1',
-                                'volume': self.water_384well}]
+                                'volume': self.water_384well,
+                                'sourcePlateType': self.project.ECHOreservoirtype}]
 
     def reset_bits(self, num_structures):
         '''
@@ -1358,9 +1523,6 @@ def main():
     parser.add_argument("-seq",   "--sequence", type=str,
                         help="Scaffold sequence file")
 
-    parser.add_argument("-nreps", "--nreps", type=int, default=1,
-                        help="Number of replicates for ECHO output")
-
     parser.add_argument("-header", "--header", type=str, default='',
                         help="Plate header")
 
@@ -1379,8 +1541,32 @@ def main():
     parser.add_argument("-welding", "--welding", action='store_true',
                         help="Add T's for welding")
 
+    parser.add_argument("-conc",     "--conc",  type=float, default=100,
+                        help="Oligo concentration in Source plates (uM)")
+
+    parser.add_argument("-vol96",    "--vol96", type=float, default=400,
+                        help="Volume of final stocks from 96well plate order (ul)")
+
+    parser.add_argument("-ECHOnreps", "--ECHOnreps", type=int, default=1,
+                        help="Number of replicates for ECHO output")
+
     parser.add_argument("-ECHOspace", "--ECHOspace", action='store_true',
                         help="Keep each structure in a seperate row on ECHO destination plate")
+
+    parser.add_argument("-ECHOrestype", "--ECHOreservoirtype",  type=str, default='6RES_AQ_BP2',
+                        help="ECHO reservoir plate type")
+
+    parser.add_argument("-ECHOsourcetype",  "--ECHOsourcetype", type=str, default='384PP_AQ_BP',
+                        help="ECHO source plate type")
+
+    parser.add_argument("-ECHOdesttype",    "--ECHOdesttype",   type=str, default='BioRad HSP 96 Skirted',
+                        help="ECHO destination plate type")
+
+    parser.add_argument("-ECHOvol",       "--ECHOvol",       type=float, default=20,
+                        help="Volume in each well in ECHO destination plate (ul)")
+
+    parser.add_argument("-ECHOdest",       "--ECHOdest",     type=str, required=False,
+                        help="96well-plate format destination instructions for ECHO")
 
     args = parser.parse_args()
 
@@ -1390,17 +1576,24 @@ def main():
         sys.exit('Input file does not exist!')
 
     # Create args dictionary
-    args_dict = {'input':     args.input,
-                 'output':    args.output,
-                 'sequence':  args.sequence,
-                 'nreps':     args.nreps,
-                 'header':    args.header,
-                 'offset':    args.offset,
-                 'addT':      args.addT,
-                 'noskip':    args.noskip,
-                 'reverse':   args.reverse,
-                 'welding':   args.welding,
-                 'ECHOspace': args.ECHOspace}
+    args_dict = {'input':             args.input,
+                 'output':            args.output,
+                 'sequence':          args.sequence,
+                 'header':            args.header,
+                 'offset':            args.offset,
+                 'addT':              args.addT,
+                 'noskip':            args.noskip,
+                 'reverse':           args.reverse,
+                 'welding':           args.welding,
+                 'vol96':             args.vol96,
+                 'oligoconc':         args.conc,
+                 'ECHOnreps':         args.ECHOnreps,
+                 'ECHOspace':         args.ECHOspace,
+                 'ECHOreservoirtype': args.ECHOreservoirtype,
+                 'ECHOsourcetype':    args.ECHOsourcetype,
+                 'ECHOdesttype':      args.ECHOdesttype,
+                 'ECHOvol':           args.ECHOvol,
+                 'ECHOdestfile':      args.ECHOdest}
 
     # Get json files
     json_files = parse_input_files(args.input)
@@ -1412,8 +1605,8 @@ def main():
     # Create a project
     new_project = Project()
 
-    # Set scaffold polarity
-    new_project.set_scaffold_polarity(args.reverse)
+    # Set Echo replicates
+    new_project.set_params(args_dict)
 
     # Get scaffold sequence
     scaffold_sequence      = new_project.read_sequence(args.sequence)
@@ -1422,13 +1615,7 @@ def main():
     new_project.add_json_files(json_files)
 
     # Set output directory
-    new_project.set_output_directory(args.output)
-
-    # Set no skip
-    new_project.set_noskip(args.noskip)
-
-    # Set Echo replicates
-    new_project.set_nreps_ECHO(args.nreps)
+    new_project.set_output_directory(output_directory=args.output, root_directory='.')
 
     # Check if sequence file exists
     if len(scaffold_sequence) == 0:
@@ -1452,9 +1639,6 @@ def main():
 
         # Get json file
         json_input = json_files[i]
-
-        # Define json output
-        head, ext  = os.path.splitext(os.path.abspath(json_input))
 
         # Read cadnano input file
         doc.readFile(json_input)
@@ -1480,6 +1664,15 @@ def main():
         new_structure.structure_id = i
         new_structure.project      = new_project
 
+        # Define json output
+        root, file  = os.path.split(os.path.abspath(json_input))
+
+        # Prepare structure name
+        structure_name, file_ext = os.path.splitext(file)
+
+        # Assign structure name
+        new_structure.structure_name = structure_name
+
         # Add structure to list
         new_project.add_structure(new_structure)
 
@@ -1499,7 +1692,7 @@ def main():
     new_project.write_oligos_96well(xlsx_output_96well, args.header)
 
     # 8. Export oligos for 384 well plate format
-    new_project.write_oligos_384well(xlsx_output_384well, args.header, args.ECHOspace)
+    new_project.write_oligos_384well(xlsx_output_384well, args.header)
 
     # 9. Prepare ECHO input
     new_project.prepare_ECHO_input()
