@@ -454,7 +454,7 @@ class Project:
         # Get number of structures
         self.num_structures = len(self.json_files)
 
-    def write_ECHO_input(self, out_fname):
+    def write_ECHO_input(self, out_fname, echo_input):
         '''
         Write ECHO input
         '''
@@ -476,7 +476,7 @@ class Project:
             self.echo_writer.writerow(header)
 
             # Iterate over each row
-            for echo_row in self.echo_res_input+self.echo_input:
+            for echo_row in echo_input:
                 echo_list = [echo_row['sourcePlate'],
                              echo_row['sourceWell'],
                              echo_row['destPlate'],
@@ -1622,10 +1622,11 @@ def main():
         sys.exit('Scaffold sequence is not available!')
 
     # Define output file
-    xlsx_output_96well  = new_project.output_directory+'/oligos_96well.xlsx'
-    xlsx_output_384well = new_project.output_directory+'/oligos_384well.xlsx'
-    echo_output_384well = new_project.output_directory+'/echo_384well.csv'
-    config_file         = new_project.output_directory+'/args.yaml'
+    xlsx_output_96well                  = new_project.output_directory+'/oligos_96well.xlsx'
+    xlsx_output_384well                 = new_project.output_directory+'/oligos_384well.xlsx'
+    echo_output_384well_6res_to_96well  = new_project.output_directory+'/echo_384well_6res_to_69well.csv'
+    echo_output_384well_384PP_to_96well = new_project.output_directory+'/echo_384well_384PP_to_69well.csv'
+    config_file                         = new_project.output_directory+'/args.yaml'
 
     # Write config file
     write_config_file(config_file, args_dict)
@@ -1701,7 +1702,8 @@ def main():
     new_project.prepare_ECHO_reservoir_input()
 
     # 11. Write ECHO inputs
-    new_project.write_ECHO_input(echo_output_384well)
+    new_project.write_ECHO_input(echo_output_384well_6res_to_96well,  new_project.echo_res_input)
+    new_project.write_ECHO_input(echo_output_384well_384PP_to_96well, new_project.echo_input)
 
 
 if __name__ == "__main__":
