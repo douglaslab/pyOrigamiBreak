@@ -19,6 +19,7 @@ import openpyxl
 import collections
 import numpy as np
 import yaml
+import re
 
 
 # GLOBALS
@@ -70,6 +71,9 @@ class Project:
         self.ECHOdestfile        = None
         self.ECHOdispense        = 50      # In nl
 
+        # Input plates file
+        self.read384_file        = None
+
     def set_params(self, args_dict):
         '''
         Set echo params
@@ -84,11 +88,29 @@ class Project:
         self.ECHOsourcetype      = args_dict['ECHOsourcetype']
         self.ECHOdesttype        = args_dict['ECHOdesttype']
         self.ECHOdestfile        = args_dict['ECHOdestfile']
+        self.read384_file        = args_dict['read384']
 
         self.vol96     = args_dict['vol96']
         self.oligoconc = args_dict['oligoconc']
 
-    def _read_dest_plates(self, fname):
+    def add_dest_plates(self):
+        # Delete the first sheet
+        self.wb_384well.remove(self.wb_384well.active)
+
+        # Add destinaton plates to workbook
+        for current_plate in self.plates_dest:
+            # Create sheet
+            ws_current = self.wb_384well.create_sheet(title=current_plate.plate_label)
+
+            # Assign worksheet for the plate
+            current_plate.worksheet        = ws_current
+
+            # Iterate over the structures
+            for well_id in current_plate.structures_dict:
+                # Assign stucture value
+                ws_current[well_id] = current_plate.structures_dict[well_id].structure_name
+
+    def read_dest_plates(self, fname):
         '''
         Read destination plates
         '''
@@ -102,9 +124,6 @@ class Project:
         # Plate counter
         plate_counter = 0
 
-        # Delete the first sheet
-        self.wb_384well.remove(self.wb_384well.active)
-
         if os.path.isfile(fname):
             wb = openpyxl.load_workbook(filename=fname)
 
@@ -117,14 +136,10 @@ class Project:
                 # Add new sheet label
                 self.sheet_labels.append(dest_sheet.title)
 
-                # Create sheet
-                ws_current = self.wb_384well.create_sheet(title=dest_sheet.title)
-
                 # Create new 96well plate
                 current_plate = Plate()
                 current_plate.structures_dict  = {}
                 current_plate.structures_list  = []
-                current_plate.worksheet        = ws_current
                 current_plate.plate_label      = dest_sheet.title
                 current_plate.plate_id         = plate_counter
                 current_plate.set_dimensions()
@@ -153,9 +168,6 @@ class Project:
 
                                 # Get the structrue object
                                 current_structure = self.structures_dict[structure_name]
-
-                                # Assign stucture value
-                                ws_current[well_id] = structure_name
 
                                 # Current plate
                                 current_plate.structures_dict[well_id] = current_structure
@@ -229,16 +241,17 @@ class Project:
         # Reset bits for the new structure
         new_structure.reset_bits(self.num_structures)
 
+        # Assign project
+        new_structure.project = self
+
+    def add_structure_oligos(self, new_structure):
+
         # Add staples to main list
         for key in new_structure.oligos_dict:
-
             if key not in self.oligos_dict:
                 self.oligos_dict[key] = new_structure.oligos_dict[key]
             else:
                 new_structure.oligos_dict[key] = self.oligos_dict[key]
-
-        # Assign project
-        new_structure.project = self
 
     def assign_bit_id(self, new_structure):
         '''
@@ -537,6 +550,51 @@ class Project:
         # Sort by source plate
         self.echo_res_input = sorted(self.echo_res_input, key=lambda entry: entry['destPlate'])
 
+    def read_plates_384well(self, fname, num_header=1):
+        '''
+        Read 384 well plates sheet
+        '''
+        # Initialize oligos list and dictionary
+        self.oligos_dict = {}
+        self.oligos_list = []
+
+        if os.path.isfile(fname):
+            wb = openpyxl.load_workbook(filename=fname)
+            # Get PlatesAll wroksheet
+            ws_plates = wb['PlatesAll']
+
+            # Iterate over the rows
+            for row in ws_plates.iter_rows(min_row=num_header+1, values_only=True):
+                new_oligo = Oligo()
+                new_oligo.plate384_plate_label = row[0]
+                new_oligo.plate384_well_id     = row[1]
+                new_oligo.plate384_seq_id      = row[2]
+                new_oligo.sequence             = row[3]
+                new_oligo.startkey             = row[4]
+                new_oligo.finishkey            = row[5]
+                new_oligo.length               = row[6]
+                new_oligo.color                = row[7]
+                new_oligo.bitseq               = row[8]
+
+                # Get bitlist
+                new_oligo.bitlist              = [int(x) for x in new_oligo.bitseq]
+
+                match_start  = re.match("(\d+)\[(\d+)\]",new_oligo.startkey)
+                match_finish = re.match("(\d+)\[(\d+)\]",new_oligo.finishkey)
+
+                new_oligo.vh5p, new_oligo.idx5p = [int(x) for x in match_start.groups()]
+                new_oligo.vh3p, new_oligo.idx3p = [int(x) for x in match_finish.groups()]
+
+                new_oligo.key   = '-'.join([str(new_oligo.vh5p),
+                                            str(new_oligo.idx5p),
+                                            str(new_oligo.vh3p),
+                                            str(new_oligo.idx3p),
+                                            new_oligo.sequence])
+                new_oligo.make_sort_key()
+
+                self.oligos_dict[new_oligo.key] = new_oligo
+                self.oligos_list.append(new_oligo)
+
     def prepare_ECHO_input(self):
         '''
         Prepare ECHO input
@@ -736,7 +794,23 @@ class Project:
                 current_plate.structures_dict[well_id] = current_structure
                 current_plate.structures_list.append(current_structure)
 
-    def _write_plate_sheets_384well(self, plate_header=''):
+    def _write_misc_sheets_384well(self):
+        '''
+        Write oligos that are not included in the original plate list
+        '''
+        # Add destinaton plates to workbook
+        for current_plate in self.plates_dest:
+            # Iterate over the structures
+            for well_id in current_plate.structures_dict:
+                # Get current structure
+                current_structure = current_plate.structures_dict[well_id]
+                if current_structure.structure_name not in self.wb_384well:
+                    # Prepare structure oligos
+                    current_structure.prepare_structure_oligos()
+                    ws_current = self.wb_384well.create_sheet(title=current_structure.structure_name)
+                    current_structure.write_excluded_oligos(ws_current)
+
+    def _write_plate_sheets_384well(self):
         '''
         Write plate sheets for ECHO mode - 384 well plate order
         '''
@@ -821,7 +895,7 @@ class Project:
             # Add row to all plates sheet
             self.ws_ALL.append(current_oligo.plate384_row)
 
-    def _write_plate_sheets_96well(self, plate_header=''):
+    def _write_plate_sheets_96well(self):
 
         # Header for the plate sheets
         self.plate_column_header = ['Plate Name', 'Well Position', 'Sequence Name', 'Sequence',
@@ -843,9 +917,6 @@ class Project:
 
         # Store sheet labels
         self.sheet_labels = [self.ws_str.title]
-
-        # Save plate header
-        self.plate_header = plate_header
 
         # Get plate label and assign the first startwell
         plate_label = 'Plate%s-%d' % (self.plate_header, counter_plate.current_plate_id)
@@ -999,29 +1070,35 @@ class Project:
         # Save excel file (workbook)
         self.wb_384well.save(out_fname)
 
-    def write_oligos_96well(self, out_fname, plate_header=''):
+    def write_oligos_96well(self, out_fname):
         '''
         Export oligos
         '''
         self._create_workbook_96well()
         self._write_structure_sheet_96well()
-        self._write_plate_sheets_96well(plate_header)
+        self._write_plate_sheets_96well()
         self._color_structures_sheet_96well()
         self._write_stocks_sheet_96well()
         self._order_sheets_96well()
         self._write_info_sheet_96well()
         self.save_sheets_96well(out_fname)
 
-    def write_oligos_384well(self, out_fname, plate_header=''):
+    def write_oligos_384well(self, out_fname):
         '''
         Export oligos
         '''
         self._create_workbook_384well()
-        if self.ECHOdestfile is not None:
-            self._read_dest_plates(self.ECHOdestfile)
-        else:
+        if self.ECHOdestfile is None:
             self._write_structure_sheet_384well(nreps=self.ECHOnreps, addspace=self.ECHOspace)
-        self._write_plate_sheets_384well(plate_header)
+        else:
+            self.read_dest_plates(self.ECHOdestfile)
+            self.add_dest_plates()
+
+        # If the plate file is provided as input skip plate sheet export
+        if self.read384_file is None:
+            self._write_plate_sheets_384well()
+        else:
+            self._write_misc_sheets_384well()
         self._write_info_sheet_384well()
         self.save_sheets_384well(out_fname)
 
@@ -1046,6 +1123,31 @@ class Structure:
         self.echo_input     = []
         self.echo_res_input = []           # Echo reservoir input
         self.oligo_conc     = 200          # In uM
+        self.num_included   = 0
+        self.num_excluded   = 0
+        self.misc_header    = ['Sequence', 'Oligo Start', 'Oligo End',
+                               'Oligo Length', 'Oligo Color']
+
+    def write_excluded_oligos(self, worksheet):
+        '''
+        Write non-included oligos
+        '''
+
+        if self.num_excluded > 0:
+            worksheet.append(self.misc_header)
+        for current_oligo in self.oligos_list:
+            if not current_oligo.include:
+                current_oligo._make_misc_row()
+                worksheet.append(current_oligo.misc_row)
+
+    def assign_sortkeys(self):
+        '''
+        Assign sorkeys
+        '''
+        for key in self.oligos_dict:
+            self.oligos_dict[key].sortkey  = (self.oligos_dict[key].colorctr,
+                                              self.oligos_dict[key].color,
+                                              self.oligos_dict[key].bitseq)
 
     def set_ECHO_params(self):
         '''
@@ -1063,37 +1165,69 @@ class Structure:
             if oligo is not None:
                 self.oligos_list.append(oligo)
 
+    def check_oligo_membership(self):
+        '''
+        Check oligo membership
+        '''
+        # Reset included/excluded oligos
+        self.num_included = 0
+        self.num_excluded = 0
+
+        for i in range(len(self.oligos_list)):
+            # Get current oligo
+            current_oligo = self.oligos_list[i]
+            if current_oligo.key in self.project.oligos_dict:
+
+                # Include only if the oligo is in the project list
+                current_oligo.include = True
+
+                # Assign the oligo from project list
+                self.oligos_list[i]   = self.project.oligos_dict[current_oligo.key]
+
+                # Update included oligo list
+                self.num_included   += 1
+            else:
+                current_oligo.include = False
+                self.num_excluded   += 1
+
     def sort_oligos_list(self):
         '''
         Sort oligos list
         '''
         self.oligos_list = sorted(self.oligos_list, key=lambda oligo: oligo.sortkey)
 
+    def prepare_structure_oligos(self):
+        '''
+        Prepare structure
+        '''
+
+        self.prepare_oligos_list()
+        self.assign_sortkeys()
+        self.sort_oligos_list()
+        self.check_oligo_membership()
+
     def prepare_ECHO_input(self):
         '''
         Prepare echo input
         '''
+        self.prepare_structure_oligos()
         self.echo_input = []
-
-        # Prepare oligos list and sort
-        self.prepare_oligos_list()
-        self.sort_oligos_list()
-
         for current_oligo in self.oligos_list:
-            # Get plate id
-            plate_label = current_oligo.plate384.plate_label
+            if current_oligo.include:
+                # Get plate id
+                plate_label = current_oligo.plate384_plate_label
 
-            # Well id
-            well_id     = current_oligo.plate384_well_id
+                # Well id
+                well_id     = current_oligo.plate384_well_id
 
-            # Volume
-            volume      = self.echo_drop_vol
+                # Volume
+                volume      = self.echo_drop_vol
 
-            # Prepare echo input
-            self.echo_input.append({'sourcePlate': plate_label,
-                                    'sourceWell': well_id,
-                                    'volume': volume,
-                                    'sourcePlateType': self.project.ECHOsourcetype})
+                # Prepare echo input
+                self.echo_input.append({'sourcePlate': plate_label,
+                                        'sourceWell': well_id,
+                                        'volume': volume,
+                                        'sourcePlateType': self.project.ECHOsourcetype})
 
     def get_echo_input(self):
         '''
@@ -1109,7 +1243,7 @@ class Structure:
         # Get project parameters
         self.set_ECHO_params()
 
-        self.water_384well  = self.water_384well - 1.0*len(self.oligos_list)*self.echo_drop_vol
+        self.water_384well  = self.water_384well - 1.0*self.num_included*self.echo_drop_vol
 
         # Prepare reservoir input
         self.echo_res_input = [{'sourcePlate': 'Reservoir',
@@ -1430,7 +1564,7 @@ class Oligo:
     def __init__(self):
         self.key      = None
         self.color    = None
-        self.colorctr = None
+        self.colorctr = 0
         self.sequence = None
         self.vh5p     = None
         self.idx5p    = None
@@ -1439,6 +1573,7 @@ class Oligo:
         self.bitlist  = None
         self.bitseq   = None
         self.sortkey  = None
+        self.include  = True
 
         # Plate and stock parameters
         self.plate96_well_id  = None
@@ -1450,6 +1585,14 @@ class Oligo:
         self.plate384         = None
 
         self.stock            = None
+
+    def make_sort_key(self):
+        '''
+        Make sort key
+        '''
+        self.sortkey  = (self.colorctr,
+                         self.color,
+                         self.bitseq)
 
     def reverse_sequence(self):
         self.sequence = self.sequence[::-1]
@@ -1482,6 +1625,16 @@ class Oligo:
                              self.length,
                              self.color,
                              self.bitseq]
+
+    def _make_misc_row(self):
+        '''
+        Make a misc oligo row
+        '''
+        self.misc_row = [self.sequence,
+                         self.startkey,
+                         self.finishkey,
+                         self.length,
+                         self.color]
 
 
 def parse_input_files(input_fnames):
@@ -1568,6 +1721,9 @@ def main():
     parser.add_argument("-ECHOdest",       "--ECHOdest",     type=str, required=False,
                         help="96well-plate format destination instructions for ECHO")
 
+    parser.add_argument("-read384",   "--read384",    type=str,
+                        help="Read 384-well plate excel project file", default=None)
+
     args = parser.parse_args()
 
     # Check if the required arguments are passed to the code
@@ -1593,7 +1749,8 @@ def main():
                  'ECHOsourcetype':    args.ECHOsourcetype,
                  'ECHOdesttype':      args.ECHOdesttype,
                  'ECHOvol':           args.ECHOvol,
-                 'ECHOdestfile':      args.ECHOdest}
+                 'ECHOdestfile':      args.ECHOdest,
+                 'read384':           args.read384}
 
     # Get json files
     json_files = parse_input_files(args.input)
@@ -1677,8 +1834,16 @@ def main():
         # Add structure to list
         new_project.add_structure(new_structure)
 
-        # Assign the bit for the staples
-        new_project.assign_bit_id(new_structure)
+        # If there is no plate to order
+        if args_dict['read384'] is None:
+            new_project.add_structure_oligos(new_structure)
+
+            # Assign the bit for the staples
+            new_project.assign_bit_id(new_structure)
+
+    # Read 384well plate sheet if given
+    if args_dict['read384'] is not None:
+        new_project.read_plates_384well(args_dict['read384'])
 
     # 2. Count colors
     new_project.count_colors()
@@ -1689,11 +1854,16 @@ def main():
     new_project.assign_sortkeys()
     new_project.prepare_oligos_list()
 
-    # 7. Export oligos for 96 well plate format
-    new_project.write_oligos_96well(xlsx_output_96well, args.header)
+    # Set Plate header
+    new_project.plate_header = args.header
+
+    # If there is no plate to order
+    if args_dict['read384'] is None:
+        # 7. Export oligos for 96 well plate format
+        new_project.write_oligos_96well(xlsx_output_96well)
 
     # 8. Export oligos for 384 well plate format
-    new_project.write_oligos_384well(xlsx_output_384well, args.header)
+    new_project.write_oligos_384well(xlsx_output_384well)
 
     # 9. Prepare ECHO input
     new_project.prepare_ECHO_input()
