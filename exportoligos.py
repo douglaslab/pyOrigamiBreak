@@ -807,8 +807,10 @@ class Project:
                 if current_structure.structure_name not in self.wb_384well:
                     # Prepare structure oligos
                     current_structure.prepare_structure_oligos()
-                    ws_current = self.wb_384well.create_sheet(title=current_structure.structure_name)
-                    current_structure.write_excluded_oligos(ws_current)
+                    # Check number of excluded oligos
+                    if current_structure.num_excluded > 0:
+                        ws_current = self.wb_384well.create_sheet(title=current_structure.structure_name)
+                        current_structure.write_excluded_oligos(ws_current)
 
     def _write_plate_sheets_384well(self):
         '''
