@@ -999,7 +999,7 @@ class Project:
             # Update current oligo entries
             current_oligo.plate96_plate_label = plate_label
             current_oligo.plate96_well_id     = well_id
-            current_oligo.plate96_seq_id      = seq_id
+            current_oligo.plate96_seq_id      = str(seq_id)+'-'+current_oligo.name
             current_oligo.plate96             = current_plate
             current_oligo.stock               = self.stocks[current_stock_key]
             current_oligo.stock_id            = stock_id
@@ -1129,6 +1129,52 @@ class Structure:
         self.num_excluded   = 0
         self.misc_header    = ['Sequence', 'Oligo Start', 'Oligo End',
                                'Oligo Length', 'Oligo Color']
+
+        # External staples informations
+        self.staples_txt    = {}
+        self.staples_file   = None
+
+
+    def read_staples_txt(self):
+        '''
+        Read staples txt file
+        '''
+        self.staples_txt = {}
+
+        # Parse json file name
+        head, ext = os.path.splitext(self.json_file)
+        
+        # Assign staples file
+        self.staples_file = head + '.txt'
+        
+        # Read staples file
+        if os.path.exists(self.staples_file):
+            f = open(self.staples_file,'r')
+            lines = f.readlines()
+            for line in lines:
+                line_arr = line.split()
+                if len(line_arr) == 2:
+                    self.staples_txt[line_arr[0]] = line_arr[1]
+
+    def update_sequences(self):
+        '''
+        Update staple sequences from staples txt
+        '''
+        if len(self.staples_txt) > 0:
+            for oligo_key in self.oligos_dict:
+                current_oligo = self.oligos_dict[oligo_key]
+
+                if current_oligo.name in self.staples_txt:
+                    current_oligo.sequence = self.staples_txt[current_oligo.name]
+                    current_oligo.length   = len(current_oligo.sequence)
+
+    def update_seq_ids(self):
+        '''
+        Update sequence ids
+        '''
+        for oligo_key in self.oligos_dict:
+            current_oligo = self.oligos_dict[oligo_key]
+            current_oligo.seq_id = str(current_oligo.seq_id)+'-'+current_oligo.name
 
     def write_excluded_oligos(self, worksheet):
         '''
@@ -1364,12 +1410,13 @@ class Structure:
 
         return oligo_sequence.replace(' ', empty_ch)
 
-    def read_oligos(self, cadnano_part, scaffold_sequence, add_T=False, welding=False):
+    def read_oligos(self, cadnano_part, scaffold_sequence=None, add_T=False, welding=False):
         self.cadnano_oligos = cadnano_part.oligos()
         self.cadnano_oligos = sorted(self.cadnano_oligos, key=lambda x: x.length(), reverse=True)
 
         # Apply sequence to scaffold
-        self.cadnano_oligos[0].applySequence(scaffold_sequence)
+        if scaffold_sequence is not None:
+            self.cadnano_oligos[0].applySequence(scaffold_sequence)
 
         # Initialize the scaffolds and staples
         self.oligos_dict = {}
@@ -1393,16 +1440,18 @@ class Structure:
             new_oligo.color     = oligo.getColor()
             new_oligo.sequence  = self.get_oligo_sequence(oligo, empty_ch, welding)
             new_oligo.length    = len(new_oligo.sequence)
+            new_oligo.name      = oligo.getName()
+
+            # Update sequence from staples-txt
+            if new_oligo.name in self.staples_txt:
+                new_oligo.sequence = self.staples_txt[new_oligo.name]
+                new_oligo.length   = len(new_oligo.sequence)
 
             # If necessary reverse the sequence
             if self.project.reverse_scaf:
                 new_oligo.reverse_sequence()
 
-            new_oligo.key       = '-'.join([str(new_oligo.vh5p),
-                                            str(new_oligo.idx5p),
-                                            str(new_oligo.vh3p),
-                                            str(new_oligo.idx3p),
-                                            new_oligo.sequence])
+            new_oligo.update_key()
 
             new_oligo.startkey  = '%d[%d]' % (new_oligo.vh5p, new_oligo.idx5p)
             new_oligo.finishkey = '%d[%d]' % (new_oligo.vh3p, new_oligo.idx3p)
@@ -1564,6 +1613,7 @@ class Stock:
 
 class Oligo:
     def __init__(self):
+        self.name     = ''
         self.key      = None
         self.color    = None
         self.colorctr = 0
@@ -1587,6 +1637,16 @@ class Oligo:
         self.plate384         = None
 
         self.stock            = None
+
+    def update_key(self):
+        '''
+        Update oligo key
+        '''
+        self.key   = '-'.join([str(self.vh5p),
+                               str(self.idx5p),
+                               str(self.vh3p),
+                               str(self.idx3p),
+                               self.sequence])
 
     def make_sort_key(self):
         '''
@@ -1813,6 +1873,9 @@ def main():
         # Set part
         new_structure.part = part
 
+        # Set json file
+        new_structure.json_file = json_input
+
         # Set the project for structure
         new_structure.project = new_project
         new_structure.offset  = args.offset or part.getSequenceOffset()
@@ -1820,6 +1883,10 @@ def main():
         # Apply the offset
         new_structure.scaffold_sequence = (new_project.scaffold_sequence[new_structure.offset:] +
                                            new_project.scaffold_sequence[:new_structure.offset])
+
+        # Read staples-txt
+        new_structure.read_staples_txt()
+
         new_structure.oligos_dict  = new_structure.read_oligos(part, new_structure.scaffold_sequence, args.addT, args.welding)
         new_structure.structure_id = i
         new_structure.project      = new_project
