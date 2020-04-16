@@ -17,7 +17,7 @@ from tqdm import tqdm
 from matplotlib import cm
 from cadnano.document import Document
 
-import autobreak
+import ctk_autobreak as autobreak
 import utilities
 
 matplotlib.use('TkAgg')
