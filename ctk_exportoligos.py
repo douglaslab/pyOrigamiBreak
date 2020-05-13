@@ -1410,7 +1410,7 @@ class Structure:
 
         return oligo_sequence.replace(' ', empty_ch)
 
-    def read_oligos(self, cadnano_part, scaffold_sequence=None, add_T=False, welding=False):
+    def read_oligos(self, cadnano_part, empty_char='?', scaffold_sequence=None, add_T=False, welding=False):
         self.cadnano_oligos = cadnano_part.oligos()
         self.cadnano_oligos = sorted(self.cadnano_oligos, key=lambda x: x.length(), reverse=True)
 
@@ -1422,7 +1422,7 @@ class Structure:
         self.oligos_dict = {}
 
         # Empty character
-        empty_ch = '?'
+        empty_ch = empty_char
         if add_T:
             empty_ch = 'T'
 
@@ -1738,6 +1738,9 @@ def main():
     parser.add_argument("-seq",   "--sequence", type=str,
                         help="Scaffold sequence file")
 
+    parser.add_argument("-dummy",   "--dummy", type=str, default='?',
+                        help="Dummy character")
+
     parser.add_argument("-header", "--header", type=str, default='',
                         help="Plate header")
 
@@ -1799,6 +1802,7 @@ def main():
                  'sequence':          args.sequence,
                  'header':            args.header,
                  'offset':            args.offset,
+                 'dummy':             args.dummy,
                  'addT':              args.addT,
                  'noskip':            args.noskip,
                  'reverse':           args.reverse,
@@ -1887,7 +1891,7 @@ def main():
         # Read staples-txt
         new_structure.read_staples_txt()
 
-        new_structure.oligos_dict  = new_structure.read_oligos(part, new_structure.scaffold_sequence, args.addT, args.welding)
+        new_structure.oligos_dict  = new_structure.read_oligos(part, args.dummy, new_structure.scaffold_sequence, args.addT, args.welding)
         new_structure.structure_id = i
         new_structure.project      = new_project
 
