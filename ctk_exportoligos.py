@@ -1847,8 +1847,8 @@ def main():
     # Define output file
     xlsx_output_96well                  = new_project.output_directory+'/oligos_96well.xlsx'
     xlsx_output_384well                 = new_project.output_directory+'/oligos_384well.xlsx'
-    echo_output_384well_6res_to_96well  = new_project.output_directory+'/echo_384well_6res_to_69well.csv'
-    echo_output_384well_384PP_to_96well = new_project.output_directory+'/echo_384well_384PP_to_69well.csv'
+    echo_output_384well_6res_to_96well  = new_project.output_directory+'/echo_384well_6res_to_96well.csv'
+    echo_output_384well_384PP_to_96well = new_project.output_directory+'/echo_384well_384PP_to_96well.csv'
     config_file                         = new_project.output_directory+'/args.yaml'
 
     # Write config file
