@@ -357,6 +357,20 @@ class Oligo:
         self.best_score_solution   = None
         self.best_penalty_solution = None
 
+        # Plot parameters
+        self.plot_params   = ['Length', 
+                              'EdgeWeight',
+                              'ProbFold',
+                              'LogProbFold',
+                              'Tf',
+                              'maxTm',
+                              'maxSeqLength',
+                              'Has14',
+                              'dGtotal',
+                              'dGintrin',
+                              'dGLoop',
+                              'dGconc']
+
     def break_in_half(self):
         '''
         Break the oligo in half
@@ -432,11 +446,35 @@ class Oligo:
         # Set edge weight
         new_edge.edge_weight = self.origami.autobreak.optimize(new_edge)
 
+        # Create csv parameters for the edge
+        new_edge.create_cvs_params()
+
         # Assign the score
         self.initial_score = new_edge.edge_weight
         self.folding_prob  = new_edge.edge_prob
         self.Tf            = new_edge.edge_Tf
         self.dsDNA_length  = sum(new_edge.dsDNA_length_list)
+
+    def color_by_cvs_param(self, param='Tf', color_map='bwr'):
+        '''
+        Color by cvs param
+        '''
+        # Prepare the color map
+        cmap      = cm.get_cmap(color_map, 1000)
+
+        # Get color index
+        cmap_index = int(1000*self.folding_prob[0])
+
+        # Get RGB value
+        self.rgb = cmap(cmap_index)[:3]
+
+        # Get hex-color
+        self.hexcolor = matplotlib.colors.rgb2hex(self.rgb)
+
+        # Apply the color
+        self.cadnano_oligo.applyColor(self.hexcolor)
+
+
 
     def color_by_folding_prob(self, color_map='bwr'):
         '''
@@ -863,11 +901,6 @@ class Origami:
             return True
         else:
             return False
-
-    def color_by_Tm(self):
-        '''
-        Color oligos by Tm
-        '''
 
     def set_dont_break_very_long_staples(self, value=False):
         '''

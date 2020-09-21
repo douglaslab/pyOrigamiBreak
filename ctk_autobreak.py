@@ -299,6 +299,10 @@ class CompleteBreakSolution:
         self.complete            = True
         self.cvs_writer_rows     = []
 
+        # Pandas data frames
+        self.summary_frame = None
+        self.staples_frame = None
+
         '''
         COLUMNS
         1.  Oligo key
@@ -419,16 +423,16 @@ class CompleteBreakSolution:
         sheet_number = self.sequence_offset
 
         # Create data frames
-        summary_frame = pandas.DataFrame(summary_rows)
+        self.summary_frame = pandas.DataFrame(summary_rows)
 
         # Create staples frames
-        staples_frame  = pandas.DataFrame(cvs_rows)
+        self.staples_frame  = pandas.DataFrame(cvs_rows, columns=self.cvs_header)
 
         # Write summary data
-        summary_frame.to_excel(writer, sheet_name=str(sheet_number), header=None, index=False)
+        self.summary_frame.to_excel(writer, sheet_name=str(sheet_number), header=None, index=False)
 
         # Write staples data
-        staples_frame.to_excel(writer, sheet_name=str(sheet_number), header=self.cvs_header, index=False, startrow=10)
+        self.staples_frame.to_excel(writer, sheet_name=str(sheet_number), header=self.cvs_header, index=False, startrow=10)
 
         # Save writer and close
         writer.save()
@@ -568,6 +572,68 @@ class AutoBreak:
         self.autobreak_csv_file           = None
         self.summary_csv_file             = None
 
+        self.plot_params   = ['Length', 
+                              'EdgeWeight',
+                              'ProbFold',
+                              'LogProbFold',
+                              'Tf',
+                              'maxTm',
+                              'maxSeqLength',
+                              'Has14',
+                              'dGtotal',
+                              'dGintrin',
+                              'dGLoop',
+                              'dGconc']
+
+        # Max/Min of the plot params
+        self.minmax_plot_params = {'Length':None, 
+                                   'EdgeWeight':None,
+                                   'ProbFold':None,
+                                   'LogProbFold':None,
+                                   'Tf':None,
+                                   'maxTm':None,
+                                   'maxSeqLength':None,
+                                   'Has14':None,
+                                   'dGtotal':None,
+                                   'dGintrin':None,
+                                   'dGLoop':None,
+                                   'dGconc':None}
+
+        # Staples and summary pandas dataframe
+        self.staples_frame = None
+        self.summary_frame = None
+        
+        self.cvs_header = ['OligoKey',
+                           'OligoGroupkey',
+                           'StartBreakKey',
+                           'StartBreakType',
+                           'StartBreakLocation',
+                           'EndBreakKey',
+                           'EndBreakType',
+                           'EndBreakLocation',
+                           'Length',
+                           'Sequence',
+                           'EdgeWeight',
+                           'ProbFold',
+                           'LogProbFold',
+                           'Tf',
+                           'maxTm',
+                           'maxSeqLength',
+                           'Has14',
+                           'dGtotal',
+                           'dGintrin',
+                           'dGLoop',
+                           'dGconc']
+
+    def calc_minmax_plot_params(self):
+        '''
+        Calculate minmax plot params
+        '''
+        if self.staples_frame is not None:
+            for key in self.minmax_plot_params:
+                key_min, key_max = np.min(self.staples_frame[key]), np.max(self.staples_frame[key])
+                self.minmax_plot_params[key] = [key_min, key_max]
+
     def get_results_summary(self):
         '''
         Get results summary
@@ -601,13 +667,13 @@ class AutoBreak:
         writer      = pandas.ExcelWriter(self.summary_excel_file, engine='openpyxl')
 
         # Create data frames
-        summary_frame  = pandas.DataFrame(results_summary)
+        self.summary_frame  = pandas.DataFrame(results_summary)
 
         # Create summary header
-        summary_header = ['SequenceOffset', 'CorrectedOffset', 'TotalProb', 'TotalScore', 'TotalNormScore', 'TotalPenalty']
+        self.summary_header = ['SequenceOffset', 'CorrectedOffset', 'TotalProb', 'TotalScore', 'TotalNormScore', 'TotalPenalty']
 
         # Write summary data
-        summary_frame.to_excel(writer, sheet_name='summary', header=summary_header, index=False)
+        self.summary_frame.to_excel(writer, sheet_name='summary', header=self.summary_header, index=False)
 
         # Save writer and close
         writer.save()
@@ -790,9 +856,23 @@ class AutoBreak:
         self.autobreak_excel_file = self.output_directory+'/'+root+'_autobreak.xlsx'
         self.summary_excel_file   = self.output_directory+'/'+root+'_summary.xlsx'
 
-        # Restuls cvs file
+        # Results cvs file
         self.autobreak_csv_file = self.output_directory+'/'+root+'_autobreak.csv'
         self.summary_csv_file   = self.output_directory+'/'+root+'_summary.csv'
+
+        # Additional json outputs
+        self.json_legacy_Tf       = self.output_directory+'/'+root+'_autobreak_legacy_Tf.json'
+        self.json_legacy_dGLoop   = self.output_directory+'/'+root+'_autobreak_legacy_dGLoop.json'
+        self.json_legacy_dGintrin = self.output_directory+'/'+root+'_autobreak_legacy_dGintrin.json'
+        self.json_legacy_dGtotal  = self.output_directory+'/'+root+'_autobreak_legacy_dGtotal.json'
+        self.json_legacy_Lenght   = self.output_directory+'/'+root+'_autobreak_legacy_Length.json'
+
+        # Histogram plots
+        self.hist_Tf       = self.output_directory+'/'+root+'_histogram_Tf.svg'
+        self.hist_dGLoop   = self.output_directory+'/'+root+'_histogram_dGLoop.svg'
+        self.hist_dGintrin = self.output_directory+'/'+root+'_histogram_dGintrin.svg'
+        self.hist_dGtotal  = self.output_directory+'/'+root+'_histogram_dGtotal.svg'
+        self.hist_Lenght   = self.output_directory+'/'+root+'_histogram_Length.svg'
 
     def write_part_to_json(self, filename, legacy_option=True):
         '''
@@ -1146,16 +1226,16 @@ class AutoBreak:
                                          engine='openpyxl')
 
         # Create data frames
-        summary_frame = pandas.DataFrame(np.array(self.final_summary_data))
+        self.summary_frame = pandas.DataFrame(np.array(self.final_summary_data))
 
         # Create staples frames
-        staples_frame  = pandas.DataFrame(np.array(self.final_cvs_rows))
+        self.staples_frame  = pandas.DataFrame(np.array(self.final_cvs_rows), columns=self.cvs_header)
 
         # Write summary data
-        summary_frame.to_excel(writer, sheet_name=str('final'), header=None, index=False)
+        self.summary_frame.to_excel(writer, sheet_name=str('final'), header=None, index=False)
 
         # Write staples data
-        staples_frame.to_excel(writer, sheet_name=str('final'), header=cvs_header, index=False, startrow=10)
+        self.staples_frame.to_excel(writer, sheet_name=str('final'), header=cvs_header, index=False, startrow=10)
 
         # Save writer and close
         writer.save()
@@ -1446,6 +1526,65 @@ class BreakEdge:
         # Loop parameter
         self.isloop        = False
 
+        # Output/plot parameters
+        self.cvs_params    = {} 
+
+
+    def create_cvs_params(self):
+        '''
+        Create params dictionary from thermodynamic parameters
+        
+        COLUMNS
+        1.  Oligo key
+        2.  Oligo Group key
+        3.  Break 1 key
+        4.  Break 1 type
+        5.  Break 1 location
+        6.  Break 2 key
+        7.  Break 2 type
+        8.  Break 2 location
+        9.  Length
+        10.  Sequence
+        11.  Edge weight
+        12.  ProbFolding
+        13.  Log-Probfolding
+        14.  Tf
+        15. maxTm
+        16. maxSeq
+        17. has14
+        18. dGtotal
+        19. dGintrin
+        20. dGloop
+        21. dGconc
+
+        '''
+
+        oligo_group_key = -1
+        if self.current_break.oligo_group:
+            oligo_group_key = self.current_break.oligo_group.key
+        self.cvs_params = {'OligoKey': '.'.join([str(x) for x in self.current_break.oligo.key]),
+                           'OligoGroupKey': oligo_group_key,
+                           'StartBreakKey': '.'.join([str(x) for x in self.current_break.key]),
+                           'StartBreakType': self.current_break.type,
+                           'StartBreakLocation':self.current_break.location,
+                           'EndBreakKey': '.'.join([str(x) for x in self.next_break.key]),
+                           'EndBreakType': self.next_break.type,
+                           'EndBreakLocation': self.next_break.location,
+                           'Length': self.edge_length,
+                           'Sequence': ''.join([str(x) for x in self.ssDNA_seq_list]),
+                           'EdgeWeight': self.edge_weight,
+                           'ProbFold': self.edge_prob,
+                           'LogProbFold': self.edge_logprob,
+                           'Tf': self.edge_Tf,
+                           'maxTm': self.edge_maxTm,
+                           'maxSeqLength': self.edge_maxseq,
+                           'Has14': int(self.edge_has14),
+                           'dGtotal': self.dG_total,
+                           'dGintrin': np.sum(self.dG_intrin_list),
+                           'dGLoop': np.sum(self.dG_inter_list),
+                           'dGconc': self.dG_conc}
+    
+
     def get_cvs_row_object(self):
         '''
         Return cvs row object
@@ -1478,31 +1617,30 @@ class BreakEdge:
         # Check if the oligo group exists
         # Doesn't exist if the clustering is not performed
 
-        oligo_group_key = -1
-        if self.current_break.oligo_group:
-            oligo_group_key = self.current_break.oligo_group.key
+        # Create cvs parameters
+        self.create_cvs_params()
 
-        cvs_row =      ['.'.join([str(x) for x in self.current_break.oligo.key]),
-                        oligo_group_key,
-                        '.'.join([str(x) for x in self.current_break.key]),
-                        self.current_break.type,
-                        self.current_break.location,
-                        '.'.join([str(x) for x in self.next_break.key]),
-                        self.next_break.type,
-                        self.next_break.location,
-                        self.edge_length,
-                        ''.join([str(x) for x in self.ssDNA_seq_list]),
-                        self.edge_weight,
-                        self.edge_prob,
-                        self.edge_logprob,
-                        self.edge_Tf,
-                        self.edge_maxTm,
-                        self.edge_maxseq,
-                        int(self.edge_has14),
-                        self.dG_total,
-                        np.sum(self.dG_intrin_list),
-                        np.sum(self.dG_inter_list),
-                        self.dG_conc]
+        cvs_row = [self.cvs_params['OligoKey'],
+                   self.cvs_params['OligoGroupKey'],
+                   self.cvs_params['StartBreakKey'],
+                   self.cvs_params['StartBreakType'],
+                   self.cvs_params['StartBreakLocation'],
+                   self.cvs_params['EndBreakKey'],
+                   self.cvs_params['EndBreakType'],
+                   self.cvs_params['EndBreakLocation'],
+                   self.cvs_params['Length'],
+                   self.cvs_params['Sequence'],
+                   self.cvs_params['EdgeWeight'],
+                   self.cvs_params['ProbFold'],
+                   self.cvs_params['LogProbFold'],
+                   self.cvs_params['Tf'],
+                   self.cvs_params['maxTm'],
+                   self.cvs_params['maxSeqLength'],
+                   self.cvs_params['Has14'],
+                   self.cvs_params['dGtotal'],
+                   self.cvs_params['dGintrin'],
+                   self.cvs_params['dGLoop'],
+                   self.cvs_params['dGconc'] ]
 
         return cvs_row
 
@@ -2387,11 +2525,14 @@ def main():
     # Read only the scores
     new_autobreak.determine_oligo_scores()
 
-    # Color oligos by folding prob
-    new_autobreak.color_oligos_by_Tf()
-
     # Export initial scores
     new_autobreak.export_initial_scores()
+
+    # Calculate min/max score parameters
+    new_autobreak.calc_minmax_plot_params()
+
+    # Color oligos by folding prob
+    new_autobreak.color_oligos_by_Tf()
 
     # Split scaffold
     new_origami.split_scaffold()
