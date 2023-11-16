@@ -417,7 +417,7 @@ class CompleteBreakSolution:
         # Load workbook
         book = openpyxl.load_workbook(filename)
         writer      = pandas.ExcelWriter(filename, engine='openpyxl')
-        writer.book = book
+        writer.workbook = book
 
         # Assign sheet number
         sheet_number = self.sequence_offset
@@ -435,7 +435,6 @@ class CompleteBreakSolution:
         self.staples_frame.to_excel(writer, sheet_name=str(sheet_number), header=self.cvs_header, index=False, startrow=10)
 
         # Save writer and close
-        writer.save()
         writer.close()
 
 
@@ -676,7 +675,6 @@ class AutoBreak:
         self.summary_frame.to_excel(writer, sheet_name='summary', header=self.summary_header, index=False)
 
         # Save writer and close
-        writer.save()
         writer.close()
 
     def write_results(self, sequence_offset=0):
@@ -1238,7 +1236,6 @@ class AutoBreak:
         self.staples_frame.to_excel(writer, sheet_name=str('final'), header=cvs_header, index=False, startrow=10)
 
         # Save writer and close
-        writer.save()
         writer.close()
 
         # Write the csv files
