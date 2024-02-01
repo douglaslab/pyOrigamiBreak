@@ -1,28 +1,23 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# @Date    : 2017-08-10 01:32:19
-# @Author  : Tural Aksel (turalaksel@gmail.com)
-# @Link    : http://example.org
-# @Version : $Id$
+import argparse
+import csv
+import glob
+import logging
+import os
+import random
+import sys
 
-from tqdm import tqdm
 from shutil import copyfile
 
-import numpy as np
-import random
-import os
-import sys
-import argparse
-import utilities
-import glob
-import pandas
 import openpyxl
-import matplotlib
-import csv
+import pandas as pd
+import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import svgutils as su
 
-import origamidesign
+from cn2svg import cn2svg
 
-matplotlib.use('TkAgg')
+from autobreak import origamidesign, scaffolds, utilities
 
 
 class OligoBreakSolution:
@@ -31,9 +26,9 @@ class OligoBreakSolution:
         self.edges        = None
         self.dsDNA_length = 0
 
-    def get_cvs_rows(self):
+    def get_csv_rows(self):
         '''
-        Prepare cvs writer object
+        Prepare csv writer object
 
         COLUMNS
         1.  Oligo key
@@ -58,11 +53,11 @@ class OligoBreakSolution:
         '''
 
         # Initialize rows
-        cvs_writer_rows = []
+        csv_writer_rows = []
         for edge in self.edges[:-1]:
-            cvs_writer_rows.append(edge.get_cvs_row_object())
+            csv_writer_rows.append(edge.get_csv_row_object())
 
-        return cvs_writer_rows
+        return csv_writer_rows
 
     def calculate_dsDNA_length(self):
         self.dsDNA_length = 0
@@ -73,16 +68,12 @@ class OligoBreakSolution:
         return self.dsDNA_length
 
     def break_oligo_solution(self):
-        '''
-        Break oligo solution
-        '''
+        '''Break oligo solution'''
         for current_break in self.breaks[:-1]:
             current_break.break_cadnano()
 
     def apply_temp_neighbor_constraints(self):
-        '''
-        Apply neighbor constraints
-        '''
+        '''Apply neighbor constraints'''
         for new_break in self.breaks[:-1]:
 
             # Get neighbor break
@@ -91,21 +82,15 @@ class OligoBreakSolution:
                 neighbor_break.dont_break_temp = True
 
     def print_solution(self):
-        '''
-        Print break solution
-        '''
+        '''Print break solution'''
         if self.breaks:
-            tqdm.write('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" %
-                       (current_break.key) for current_break in self.breaks]),
-                       file=self.origami.tqdm_output_file)
-            tqdm.write('Edge length/weight: '+'->'.join(['(%d / %.1e)' %
-                       (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]),
-                       file=self.origami.tqdm_output_file)
+            logging.info('Break path:\n'+'->\n'.join(["(%3d.%3d.%3d)" % 
+                (current_break.key) for current_break in self.breaks]))
+            logging.info('Edge length/weight: '+'->'.join(['(%d / %.1e)' %
+                (edge.edge_length, edge.edge_weight) for edge in self.edges[:-1]]))
 
     def reset_temp_neighbor_constraints(self):
-        '''
-        Reset neighbor constraints
-        '''
+        '''Reset neighbor constraints'''
         for new_break in self.breaks[:-1]:
 
             # Get neighbor break
@@ -114,9 +99,7 @@ class OligoBreakSolution:
                 neighbor_break.dont_break_temp = False
 
     def calculate_self_penalty(self):
-        '''
-        Calculate self penalty score
-        '''
+        '''Calculate self penalty score'''
         self.self_penalty = 0
         for new_break in self.breaks[:-1]:
 
@@ -134,17 +117,13 @@ class OligoBreakSolution:
         self.self_penalty = int(1.0*self.self_penalty/2)
 
     def initialize(self):
-        '''
-        Prepare the lists
-        '''
+        '''Prepare the lists'''
         self.breaks = [break_path.break_node for break_path in self.break_paths[::-1]]
         self.edges  = [break_path.break_edge for break_path in self.break_paths[::-1]]
         self.scores = [break_path.score for break_path in self.break_paths[::-1]]
 
     def is_identical(self, other_solution, max_index=None):
-        '''
-        Compare the baths between two solutions
-        '''
+        '''Compare the baths between two solutions'''
         # Determine maximum index
         max_i = len(self.breaks)-1
         if max_index:
@@ -172,9 +151,7 @@ class OligoBreakSolution:
 class GroupBreaksolution:
 
     def __init__(self):
-        '''
-        Break solutions for oligo group
-        '''
+        '''Break solutions for oligo group'''
 
         self.break_solutions    = None
         self.total_score        = 0
@@ -183,8 +160,8 @@ class GroupBreaksolution:
         self.complete           = True
         self.origami            = None
 
-    def get_cvs_rows(self):
-        cvs_writer_rows = []
+    def get_csv_rows(self):
+        csv_writer_rows = []
         for key in self.break_solutions:
             # Get break solution
             break_solution    = self.break_solutions[key]
@@ -194,14 +171,12 @@ class GroupBreaksolution:
                 continue
 
             # Extend the list with the row objects
-            cvs_writer_rows.extend(break_solution.get_cvs_rows())
+            csv_writer_rows.extend(break_solution.get_csv_rows())
 
-        return cvs_writer_rows
+        return csv_writer_rows
 
     def break_group_solution(self):
-        '''
-        Break group solution
-        '''
+        '''Break group solution'''
         for key in self.break_solutions:
             # Get break solution
             break_solution    = self.break_solutions[key]
@@ -214,25 +189,21 @@ class GroupBreaksolution:
             break_solution.break_oligo_solution()
 
     def print_solution(self):
-        '''
-        Print group solution
-        '''
+        '''Print group solution'''
         if self.break_solutions:
-            tqdm.write('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
-                       (self.complete, self.total_score, self.total_penalty),
-                       file=self.origami.tqdm_output_file)
+            summary = 'Complete:%-5s TotalScore:%-5.3f TotalCrossoverPenalty:%-3d' % \
+                       (self.complete, self.total_score, self.total_penalty)
+            logging.info(summary)
             # Print the solutions
             for oligo_key in self.break_solutions:
                 # Print solution for oligo
-                tqdm.write('Solution for oligo: (%d,%d,%d)' % oligo_key,
-                           file=self.origami.tqdm_output_file)
+                solution = 'Solution for oligo: (%d,%d,%d)' % oligo_key
+                logging.info(solution)
                 if self.break_solutions[oligo_key]:
                     self.break_solutions[oligo_key].print_solution()
 
     def calculate_penalty(self, verbose=False):
-        '''
-        Calculate penalty for the oligo group solution
-        '''
+        '''Calculate penalty for the oligo group solution'''
         self.total_score        = 0
         self.total_penalty      = 0
         self.total_dsDNA_length = 0
@@ -246,8 +217,7 @@ class GroupBreaksolution:
             # If the solution doesnt exist move to next break solution
             if not break_solution:
                 if verbose:
-                    tqdm.write('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0], key[1], key[2]),
-                               file=self.origami.tqdm_output_file)
+                    logging.warning('SOLUTION DOESNT EXIST for oligo (%d,%d,%d)' % (key[0], key[1], key[2]))
                 self.complete = False
                 continue
 
@@ -281,9 +251,7 @@ class GroupBreaksolution:
 
 
 class CompleteBreakSolution:
-    '''
-    Complete break solution class
-    '''
+    '''Complete break solution class'''
 
     def __init__(self):
 
@@ -297,7 +265,11 @@ class CompleteBreakSolution:
         self.sequence_offset     = 0
         self.corrected_offset    = 0
         self.complete            = True
-        self.cvs_writer_rows     = []
+        self.csv_writer_rows     = []
+
+        # Pandas data frames
+        self.summary_frame = None
+        self.staples_frame = None
 
         '''
         COLUMNS
@@ -323,32 +295,33 @@ class CompleteBreakSolution:
         19. dGloop
         20. dGconc
         '''
-        self.cvs_header = ['OligoKey',
-                           'OligoGroupkey',
-                           'StartBreakKey',
-                           'StartBreakType',
-                           'StartBreakLocation',
-                           'EndBreakKey',
-                           'EndBreakType',
-                           'EndBreakLocation',
-                           'Length',
-                           'Sequence',
-                           'EdgeWeight',
-                           'ProbFold',
-                           'LogProbFold',
-                           'Tf',
-                           'maxTm',
-                           'maxSeqLength',
-                           'Has14',
-                           'dGtotal',
-                           'dGintrin',
-                           'dGLoop',
-                           'dGconc']
+        self.csv_header = [
+            'OligoKey',            # Unique id in the form helix.idx.strandtype (fwd: 1, rev: -1)
+            'OligoGroupkey',       
+            'StartBreakKey',       # Start break location at helix.idx.strandtype
+            'StartBreakType',      # 'break' (internal) or 'crossover'
+            'StartBreakLocation',  # 'terminus' (unused?)
+            'EndBreakKey',         # End break location at helix.idx.strandtype
+            'EndBreakType',        # 'break' (internal) or 'crossover'
+            'EndBreakLocation',    # 'terminus' (unused?)
+            'Length',              # Oligo length in nucleotides (integer)
+            'Sequence',            # Staple sequence (string)
+            'EdgeWeight',          # Value used in graph processing (default: LogProbFold)
+            'ProbFold',            # Estimated probability that the staple is folded at T=50°C
+            'LogProbFold',         # ln(ProbFold), allows for summation instead of multiplication
+            'Tf',                  # Estimated folding temperature of the staple given T=50°C
+            'TfColor',             # Tf mapped to hex color value, see get_TfColor()
+            'maxTm',               # Max melting temp (°C) among all staple segments in the oligo
+            'maxSeqLength',        # Max length (nt) among all staple segments in the oligo
+            'Has14',               # 1 if staple includes a segment with len >= 14 nt, otherwise 0
+            'dGtotal',             # Sum of dGhyb + dGloop + dGconc
+            'dGhyb',               # Favorable free-energy change due to staple:scaffold hybridization
+            'dGloop',              # Unfavorable free-energy estimate for scaffold loop closure
+            'dGconc'               # Unfavorable free-energy estimate due 
+        ]
 
     def calculate_total_score(self):
-        '''
-        Calculate total score for the best solutions
-        '''
+        '''Calculate total score for the best solutions'''
         self.total_prob         = 1.0
         self.total_score        = 0
         self.total_penalty      = 0
@@ -369,22 +342,18 @@ class CompleteBreakSolution:
         # Determine normalized score
         self.total_norm_score = 1.0*self.total_score/self.total_dsDNA_length
 
-    def get_cvs_rows(self):
-        '''
-        Get cvs writer rows
-        '''
-        cvs_writer_rows = []
+    def get_csv_rows(self):
+        '''Get csv writer rows'''
+        csv_writer_rows = []
         for key in self.group_solutions:
             # Check if the solution exists
             if self.group_solutions[key]:
-                cvs_writer_rows.extend(self.group_solutions[key].get_cvs_rows())
+                csv_writer_rows.extend(self.group_solutions[key].get_csv_rows())
 
-        return cvs_writer_rows
+        return csv_writer_rows
 
     def get_summary_rows(self):
-        '''
-        Get summary rows
-        '''
+        '''Get summary rows'''
         summary_rows = [['Temperature', self.temperature_celcius],
                         ['TotalProb', self.total_prob],
                         ['TotalScore', self.total_score],
@@ -397,55 +366,46 @@ class CompleteBreakSolution:
         return summary_rows
 
     def export_staples(self, filename):
-        '''
-        Export the staples and its scores into an excel file
-        '''
+        '''Export the staples and its scores into an excel file'''
         # Get summary rows
         summary_rows = np.array(self.get_summary_rows())
 
-        # Get the cvs rows
-        cvs_rows = np.array(self.get_cvs_rows())
+        # Get the csv rows
+        csv_rows = np.array(self.get_csv_rows())
 
         # If the data arrays are empty, quit
-        if len(summary_rows) == 0 or len(cvs_rows) == 0:
+        if len(summary_rows) == 0 or len(csv_rows) == 0:
             return
 
-        # Load workbook
-        book = openpyxl.load_workbook(filename)
-        writer      = pandas.ExcelWriter(filename, engine='openpyxl')
-        writer.book = book
+        # Write to `filename` workbook
+        with pd.ExcelWriter(filename, engine="openpyxl", mode="a", if_sheet_exists="overlay") as writer:
 
-        # Assign sheet number
-        sheet_number = self.sequence_offset
+            # Assign sheet number
+            sheet_number = self.sequence_offset
 
-        # Create data frames
-        summary_frame = pandas.DataFrame(summary_rows)
+            # Create data frames
+            self.summary_frame = pd.DataFrame(summary_rows)
 
-        # Create staples frames
-        staples_frame  = pandas.DataFrame(cvs_rows)
+            # Create staples frames
+            self.staples_frame = pd.DataFrame(csv_rows, columns=self.csv_header)
 
-        # Write summary data
-        summary_frame.to_excel(writer, sheet_name=str(sheet_number), header=None, index=False)
+            # Write summary data
+            self.summary_frame.to_excel(writer, sheet_name=str(sheet_number), header=None, index=False)
 
-        # Write staples data
-        staples_frame.to_excel(writer, sheet_name=str(sheet_number), header=self.cvs_header, index=False, startrow=10)
+            # Write staples data
+            self.staples_frame.to_excel(writer, sheet_name=str(sheet_number), header=self.csv_header, index=False, startrow=10)
 
-        # Save writer and close
-        writer.save()
-        writer.close()
+            # Save and close
+            # writer.close()
 
 
 class AutoStaple:
     def __init__(self):
-        '''
-        Auto staple class
-        '''
+        '''Auto staple class'''
         self.origami = None
 
     def decorate(self):
-        '''
-        Decorate the design
-        '''
+        '''Decorate the design'''
         self.part.potentialCrossoverMap(0)
 
 
@@ -485,9 +445,10 @@ class AutoBreak:
         self.optim_pick_method               = 'best'
 
         # Output file
-        self.json_legacy_output             = 'out_legacy.json'
-        self.json_cn25_output               = 'out_cn25.json'
+        self.json_legacy_output              = 'out_legacy.json'
         self.output_directory                = '.'
+        self.output_counter                  = 1
+        self.seq_filename                    = None
 
         # Optimization function
         self.optim_args                      = [['dG:50']]
@@ -561,17 +522,74 @@ class AutoBreak:
 
         # Excel file that stores the results
         self.results_excel_file             = None
-        self.autobreak_excel_file           = None
-        self.summary_excel_file             = None
 
-        # CVS versions of the output files
+        # csv versions of the output files
         self.autobreak_csv_file           = None
         self.summary_csv_file             = None
 
+        self.plot_params   = ['Length', 
+                              'EdgeWeight',
+                              'ProbFold',
+                              'LogProbFold',
+                              'Tf',
+                              'maxTm',
+                              'maxSeqLength',
+                              'Has14',
+                              'dGtotal',
+                              'dGhyb',
+                              'dGloop',
+                              'dGconc']
+
+        # Max/Min of the plot params
+        self.minmax_plot_params = {'Length':None, 
+                                   'EdgeWeight':None,
+                                   'ProbFold':None,
+                                   'LogProbFold':None,
+                                   'Tf':None,
+                                   'maxTm':None,
+                                   'maxSeqLength':None,
+                                   'Has14':None,
+                                   'dGtotal':None,
+                                   'dGhyb':None,
+                                   'dGloop':None,
+                                   'dGconc':None}
+
+        # Staples and summary pandas dataframe
+        self.staples_frame = None
+        self.summary_frame = None
+
+        self.csv_header = ['OligoKey',
+                           'OligoGroupkey',
+                           'StartBreakKey',
+                           'StartBreakType',
+                           'StartBreakLocation',
+                           'EndBreakKey',
+                           'EndBreakType',
+                           'EndBreakLocation',
+                           'Length',
+                           'Sequence',
+                           'EdgeWeight',
+                           'ProbFold',
+                           'LogProbFold',
+                           'Tf',
+                           'TfColor',
+                           'maxTm',
+                           'maxSeqLength',
+                           'Has14',
+                           'dGtotal',
+                           'dGhyb',
+                           'dGloop',
+                           'dGconc']
+
+    def calc_minmax_plot_params(self):
+        '''Calculate minmax plot params'''
+        if self.staples_frame is not None:
+            for key in self.minmax_plot_params:
+                key_min, key_max = np.min(self.staples_frame[key]), np.max(self.staples_frame[key])
+                self.minmax_plot_params[key] = [key_min, key_max]
+
     def get_results_summary(self):
-        '''
-        Get results summary
-        '''
+        '''Get results summary'''
         self.results_summary = []
 
         # Print the scores
@@ -586,9 +604,7 @@ class AutoBreak:
         return self.results_summary
 
     def write_results_summary(self):
-        '''
-        Write results summary
-        '''
+        '''Write results summary'''
 
         # Get results summary
         results_summary = np.array(self.get_results_summary())
@@ -598,105 +614,88 @@ class AutoBreak:
             sys.exit('SOLUTION DOESNT EXIST')
 
         # Create writer
-        writer      = pandas.ExcelWriter(self.summary_excel_file, engine='openpyxl')
+        if os.path.exists(self.results_excel_file):
+            writer = pd.ExcelWriter(self.results_excel_file, engine='openpyxl', mode='a', if_sheet_exists="overlay")
+        else:
+            writer = pd.ExcelWriter(self.results_excel_file, engine='openpyxl', mode='w')
 
         # Create data frames
-        summary_frame  = pandas.DataFrame(results_summary)
+        self.summary_frame  = pd.DataFrame(results_summary)
 
         # Create summary header
-        summary_header = ['SequenceOffset', 'CorrectedOffset', 'TotalProb', 'TotalScore', 'TotalNormScore', 'TotalPenalty']
+        self.summary_header = ['SequenceOffset', 'CorrectedOffset', 'TotalProb', 'TotalScore', 'TotalNormScore', 'TotalPenalty']
 
         # Write summary data
-        summary_frame.to_excel(writer, sheet_name='summary', header=summary_header, index=False)
+        self.summary_frame.to_excel(writer, sheet_name='Summary', header=self.summary_header, index=False)
 
         # Save writer and close
-        writer.save()
         writer.close()
 
     def write_results(self, sequence_offset=0):
-        '''
-        Write Solution results to a sheet in results excel file
-        '''
+        '''Write Solution results to a sheet in results excel file'''
         if sequence_offset in self.complete_solutions:
             self.complete_solutions[sequence_offset].export_staples(self.results_excel_file)
 
     def write_best_result(self):
-        '''
-        Write best result
-        '''
+        '''Write best result'''
         if not self.write_all_results:
             self.best_complete_solution.export_staples(self.results_excel_file)
 
     def create_results_excel_file(self):
-        '''
-        Create resuls excel file
-        '''
+        '''Create resuls excel file'''
         wb = openpyxl.Workbook()
+        sheet = wb.active
+        sheet.title = 'Summary'
         wb.save(self.results_excel_file)
 
     def set_lower_bound(self, min_length=21):
-        '''
-        Set lower bound
-        '''
+        '''Set lower bound'''
         self.LOWER_BOUND = min_length
 
     def set_upper_bound(self, max_length=60):
-        '''
-        Set lower bound
-        '''
+        '''Set lower bound'''
         self.UPPER_BOUND = max_length
 
     def set_readonly(self, read_only=False):
-        '''
-        Set readonly parameter
-        '''
+        '''Set readonly parameter'''
         self.readonly = read_only
 
     def set_write_all_results(self, write_all_results=False):
-        '''
-        Set write all results
-        '''
+        '''Set write all results'''
         self.write_all_results = write_all_results
 
     def set_temperature_parameter(self):
-        '''
-        Set temperature parameters
-        '''
+        '''Set temperature parameters'''
         self.optim_temperature_celcius = self.optim_params_dict['dG'][0]
         self.optim_temperature_kelvin  = self.optim_temperature_celcius + 273.15
 
     def set_permute_sequence(self, permute=False):
-        '''
-        Set permute sequence
-        '''
+        '''Set permute sequence'''
         self.permute_sequence = permute
 
     def color_oligos_by_folding_prob(self):
-        '''
-        Color oligos by folding prob
+        '''Color oligos by folding prob
         '''
         for oligo in self.origami.oligos['staple']:
             oligo.color_by_folding_prob()
 
     def color_oligos_by_Tf(self):
-        '''
-        Color oligos by folding prob
-        '''
+        '''Color oligos by Tf'''
         for oligo in self.origami.oligos['staple']:
-            oligo.color_by_Tf()
+            color = oligo.color_by_Tf()
+            # TO DO: store oligo color
+
 
     def preprocess_optim_params(self):
         '''
         Preprocess optimization parameters
 
+        RULE 1. If there are no crossovers in break_rule,
+                make oligo solution and global solution number 1
+                since optimization yields the best result
 
-        RULE1. If there is no cross in break rule,
-               make oligo solution and global solution number 1
-               since Optimization yields the best result
-
-        RUL2. If oligos are not shuffled, make num oligo solutions
-              and global solutions 1
-
+        RULE 2. If oligos are not shuffled, make num oligo solutions
+                and global solutions 1
         '''
 
         # RULE 1
@@ -710,9 +709,7 @@ class AutoBreak:
             self.NUM_GLOBAL_SOLUTIONS = 1
 
     def set_output_directory(self, input_filename, output_directory=None):
-        '''
-        Set output directory
-        '''
+        '''Set output directory'''
         # Split input file
         head, tail       = os.path.split(os.path.abspath(input_filename))
         root, ext        = os.path.splitext(tail)
@@ -725,142 +722,318 @@ class AutoBreak:
 
         # List existing output directories
         potential_directories = list(filter(lambda x: os.path.isdir(x),
-                                            glob.glob(head+'/'+root+'_autobreak_[0-9][0-9][0-9]')))
+                                            glob.glob(head+'/'+root+'_autobreak_[0-9][0-9][0-9][0-9]')))
 
         # Get the number extensions
-        number_extensions = [int(x[-3:]) for x in potential_directories]
+        number_extensions = [int(x[-4:]) for x in potential_directories]
 
         # Get the counter
-        output_counter = 1
+        self.output_counter = 1
         if len(number_extensions) > 0:
-            output_counter = max(number_extensions)+1
+            self.output_counter = max(number_extensions)+1
 
         # Check the output directory
         if output_directory is None:
-            self.output_directory = head+'/'+root+"_autobreak_%03d" % (output_counter)
+            self.output_directory = os.path.join(head, f"{root}_autobreak_{self.output_counter:04d}")
         else:
             self.output_directory = output_directory
 
-        # Make the output directory
-        os.makedirs(self.output_directory, exist_ok=True)
+        # Make the output directory        
+        inputs_dir = os.path.join(self.output_directory, 'inputs')
+        intermediates_dir = os.path.join(self.output_directory, 'intermediates')
+        outputs_dir = os.path.join(self.output_directory, 'outputs')
+        os.makedirs(inputs_dir, exist_ok=True)
+        os.makedirs(intermediates_dir, exist_ok=True)
+        os.makedirs(outputs_dir, exist_ok=True)
 
         # Copy input file to output directory
-        copyfile(self.input_filename, self.output_directory+'/'+self.input_tail)
+        copyfile(self.input_filename, os.path.join(inputs_dir, self.input_tail))
 
     def copy_sequence_file(self):
-        '''
-        Copy sequence file to output directory
-        '''
+        '''Copy sequence file to output directory'''
         if self.origami.sequence_file and os.path.isfile(self.origami.sequence_file):
             head, tail = os.path.split(self.origami.sequence_file)
-            copyfile(self.origami.sequence_file, self.output_directory+'/'+tail)
-        elif self.origami.sequence_file not in utilities.SCAFFOLD_SEQUENCES:
-            f = open(self.output_directory+'/random_sequence.txt', 'w')
+            self.seq_filename = os.path.join(self.output_directory, tail)
+            copyfile(self.origami.sequence_file, self.seq_filename)
+        elif self.origami.sequence_file not in scaffolds.SCAFFOLD_SEQUENCES:
+            self.seq_filename = os.path.join(self.output_directory, 'inputs', 'random_seq.txt')
+            f = open(self.seq_filename, 'w')
+            f.write(self.origami.scaffold_sequence)
+            f.close()
+        elif self.origami.sequence_file in scaffolds.SCAFFOLD_SEQUENCES:
+            # Write the known sequence for convenient use by other tools
+            self.seq_filename = os.path.join(self.output_directory,'inputs', '{}_seq.txt'.format(self.origami.sequence_file))
+            f = open(self.seq_filename, 'w')
             f.write(self.origami.scaffold_sequence)
             f.close()
 
     def write_input_args(self):
-        '''
-        Write input arguments in a txt file
-        '''
-        self.args_file = self.output_directory+'/args.txt'
-        f = open(self.args_file, 'w')
-        for key in self.args_dict:
-            f.write('%-8s: %-8s\n' % (key, self.args_dict[key]))
+        '''Write input arguments in a txt file'''
+        self.args_file = os.path.join(self.output_directory, 'inputs', self.output_name+'_args.txt')
+        with open(self.args_file, 'w') as f: 
+            for key in self.args_dict:
+                f.write('%-9s: %s\n' % (key, self.args_dict[key]))
 
-        f.close()
+
+    def create_staple_heatmap(self, is_notebook_session):
+        '''Generate Cadnano schematic in SVG format using cn2svg'''
+        svg_args = cn2svg.DefaultArgs()
+        svg_args.input      = self.json_legacy_output  # Cadnano json file
+        svg_args.output     = self.results_heatmap_dir # Output directory
+        svg_args.seq        = self.seq_filename        # Scaffold sequence file
+        svg_args.heatmap    = True                     # Hide staple crossovers which occlude heatmap interpretation
+        cn2svg.run(is_notebook_session=is_notebook_session, args=svg_args)
+
+    def create_results_plots(self):
+        '''Generate Staple Results plot in SVG format using matplotlib'''
+
+        if not os.path.exists(self.results_excel_file): 
+            return
+
+        # Read specific columns from the file
+        df = pd.read_excel(self.results_excel_file, sheet_name='Final', 
+                           usecols=['Tf', 'TfColor', 'dGhyb', 'dGloop'])
+
+        # Set the aesthetic style of the plots
+        plt.style.use('bmh')
+
+        # Create the subplots
+        fig, (ax1,ax2,ax3) = plt.subplots(1, 3, figsize=(8, 4), gridspec_kw={'width_ratios': [1,2,4]})
+
+        # Hide middle plot to create whitespace
+        ax2.set_visible(False)
+
+        # Strip plot parameters
+        np.random.seed(2701) 
+        x_jitter = .9
+        strip_x_min = 1-x_jitter
+        strip_x_max = 1+x_jitter
+
+        rel_tf = df['Tf'] - 50
+        median_rel_tf = rel_tf.median()
+
+        x = np.random.uniform(strip_x_min, strip_x_max, size=len(df))
+        ax1.scatter(x, rel_tf, color=df['TfColor'], label='50-Tf', linewidth=0.2, edgecolor='#666', s=30)
+
+        # Draw a horizontal line and triangle markers at the median value
+        ax1.axhline(y=median_rel_tf, xmin=0, xmax=2, color='black', linestyle='solid', linewidth=1)
+
+        print(self.input_filename, median_rel_tf)
+
+        # Add text label for the median
+        sign = '' if median_rel_tf < 0 else '+'
+        ax1.text(x=2.1, y=median_rel_tf, s=f'{sign}{median_rel_tf:.1f}°',  # Format to 2 decimal places
+                 ha='left', va='center',color='k', size='medium', fontweight='bold')
+        ax1.text(x=2.2, y=median_rel_tf+3, s='median',  # Format to 2 decimal places
+                 ha='left', va='top',color='k', size='small')
+
+        # ax1.text(x=2.1, y=median_tf, s=,  # Format to 2 decimal places
+        #          ha='left', va='center',color='k', size='medium', fontweight='bold')
+        ax1.set_xlabel('Staples')
+        ax1.set_xlim(0, 2)
+        ax1.set_xticks([])
+        ax1.set_ylabel('Relative Tf at T=50°C')
+        ax1.set_ylim(40, -40)
+        ax1.set_yticks([-30, -20, -10, 0, 10, 20, 30])
+        ax1.set_yticklabels(['–30','–20', '–10', '  0', '+10', '+20', '+30'])
+        ax1.tick_params(axis='y', labelcolor='#999')
+
+        # Second subplot: Colorbar with labels
+        norm = mpl.colors.Normalize(vmin=-20, vmax=20)
+        cmap = mpl.cm.coolwarm_r
+        # Add a set of axes with the position and size [left, bottom, width, height]
+        # cax = fig.add_axes([.28, .21, 0.02, .565])
+        cax = fig.add_axes([.35, .3, 0.02, .4])
+        cax.set_ylim(-20,20)
+        cb = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), 
+                          cax=cax, orientation='vertical', extend='both')
+        cax.set_yticks([])
+        cax.text(-.5,  10, 'More Folded', ha='right', va='bottom', rotation='vertical') 
+        cax.text(-.5, -10, 'Less Folded', ha='right', va='top', rotation='vertical')
+
+        # Third subplot: ∆Gloop vs ∆Ghyb scatter plot
+        ax3.plot([-10,60], [10,-60], linewidth=1, linestyle=(0, (5, 5)), color='#c00')
+        # ax3.tick_params(axis='x', labelcolor='#0066CC')
+        # ax3.tick_params(axis='y', labelcolor='#57BB00')
+        ax3.scatter(df['dGloop'], df['dGhyb'], c=df['TfColor'], linewidth=0.2, edgecolor='#666', s=30)
+        ax3.annotate('∆G$_{loop}$+∆G$_{hyb}$=0', 
+                     xy=(0, 0),  # Point to which the arrow points
+                     xytext=(8, 4),  # Location of the text
+                     bbox=dict(boxstyle="round", fc="0.8"),
+                     arrowprops=dict(facecolor='#c00', shrink=0.05, width=2, headwidth=6))  # Arrow properties
+        ax3.set_xlabel('∆G$_{loop}$') #, color='#0066CC')
+        ax3.set_ylabel('∆G$_{hyb}$') #, color='#57BB00')
+        ax3.set_xlim(-10, 60)  # 'dGloop'
+        ax3.set_ylim(-60, 10)  # 'dGhyb'
+        ax3.set_xticks([0, 25, 50])
+        ax3.set_yticks([0,-25,-50])
+
+        # Save the entire figure
+        # plt.savefig(f"{file_name}.svg")
+        plt.savefig(self.results_plots)
+
+
+    def create_summary_figure(self):
+        '''Compose Cadnano schematic and Results plots using svgutils'''
+
+        # Load SVG files as svgutils.transform.SVGFigure objects to get dimensions
+        svg_A = su.transform.fromfile(self.results_heatmap_path)
+        svg_B = su.transform.fromfile(self.results_plots)
+
+        # Get the width and height, removing any `pt` units
+        wA, hA = (float(d.replace('pt', '')) for d in svg_A.get_size())
+        wB, hB = (float(d.replace('pt', '')) for d in svg_B.get_size())
+
+        # Weirdly, reload SVG fils as svgutils.compose.SVG object so we can transform them
+        svg_A = su.compose.SVG(self.results_heatmap_path)
+        svg_B = su.compose.SVG(self.results_plots)
+
+        # Calculate the scale factor for A.svg
+        scale_factor = 0.8*hB/hA
+        new_wA = wA * scale_factor
+        new_hA = hA * scale_factor
+
+        # Scale A according 
+        scaled_A = su.compose.Figure(new_wA, new_hA, svg_A.scale(scale_factor))
+
+        # Create a figure with enough width to hold both SVGs side by side
+        fig = su.transform.SVGFigure(wA+wB, hB)
+
+        # Position A.svg on the left, B.svg on the right
+        fig.append([scaled_A.move(0.1*new_wA, 0.11*hB), svg_B.move(new_wA, 0)])
+
+        # Save the final composite SVG
+        fig.save(self.results_report)
+
+    def first_run_message(self):
+        message = '''
+Autobreak generates the following directory structure.
+
+{name}_autobreak_{run}               # Top-level run folder (e.g. 001, 002, ...)
+├── inputs/
+│   └── {name}.json                  # Original input file
+│   └── {name}_{run}_args.txt        # Run parameters
+│   └── *seq.txt                     # Scaffold sequence used
+├── intermediates/
+│   └── {name}_{run}_ab_ortho.svg    # Orthographic helix schematic
+│   └── {name}_{run}_ab_path.svg     # Path Heatmap diagram
+│   └── {name}_{run}_plots.svg       # Thermodynamic plots
+│   └── {name}_{run}.log             # Debug and stderr log
+└── outputs/
+    └── {name}_{run}_autobreak.json  # Break solution applied
+    └── {name}_{run}_report.svg      # Composite of heatmap and plots
+    └── {name}_{run}_results.xlsx    # Per-staple model calculations
+'''
+
+        # Get the current working directory
+        current_directory = os.getcwd()
+
+        # Pattern to match subdirectories of the form '*_autobreak_*'
+        pattern = os.path.join(current_directory, "*_autobreak_*")
+
+        # Search for directories matching the pattern
+        subdirectories = [d for d in glob.glob(pattern) if os.path.isdir(d)]
+
+        # Print welcome message if autobreak has not been run in this folder.
+        if len(subdirectories) == 1:
+            print(message)
+
 
     def define_output_files(self):
-        '''
-        Define json output
-        '''
+        '''Define output files based on json input'''
 
         # Split input file
         head, tail       = os.path.split(self.origami.json_input)
         root, ext        = os.path.splitext(tail)
+        self.output_name = name = '%s_%04d' % (root,self.output_counter)
+        print("Run name:", '%s_autobreak_%04d' % (root,self.output_counter))
 
-        # Output files
-        self.json_start_output  = self.output_directory+'/'+root+'_start.json'
+        outdir = self.output_directory
 
-        self.json_legacy_output = self.output_directory+'/'+root+'_autobreak_legacy.json'
-        self.json_cn25_output   = self.output_directory+'/'+root+'_autobreak_cn25.json'
+        self.autobreak_log = os.path.join(outdir, 'intermediates', name+'.log')
+        logging.basicConfig(filename=self.autobreak_log, encoding='utf-8', 
+                            format='%(asctime)s %(levelname)s: %(message)s', 
+                            datefmt='%m/%d/%Y %I:%M:%S %p',
+                            level=logging.DEBUG)
+        # Prevent matplotlib from writing findfont messages to the log
+        logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
-        # Results excel file
-        self.results_excel_file   = self.output_directory+'/'+root+'.xlsx'
-        self.autobreak_excel_file = self.output_directory+'/'+root+'_autobreak.xlsx'
-        self.summary_excel_file   = self.output_directory+'/'+root+'_summary.xlsx'
+        # Redirect stderr to logger
+        class StdErrLogger(object):
+            def write(self, message):
+                # Filter out empty messages or newlines
+                if message.rstrip() != "":
+                    logging.error(message.rstrip())
 
-        # Restuls cvs file
-        self.autobreak_csv_file = self.output_directory+'/'+root+'_autobreak.csv'
-        self.summary_csv_file   = self.output_directory+'/'+root+'_summary.csv'
+            def flush(self):
+                pass  # Needed for compatibility with the file-like interface
+        sys.stderr = StdErrLogger()
+
+        # Output file paths
+        self.json_legacy_output    = os.path.join(outdir, 'outputs', name+'_autobreak.json')
+        self.results_excel_file    = os.path.join(outdir, 'outputs', name+'_results.xlsx')
+        self.results_heatmap_dir   = os.path.join(outdir, 'intermediates')
+        self.results_heatmap_path  = os.path.join(outdir, 'intermediates', name+'_autobreak_path.svg')
+        self.results_heatmap_ortho = os.path.join(outdir, 'intermediates', name+'_autobreak_ortho.svg')
+        self.results_plots         = os.path.join(outdir, 'intermediates', name+'_plots.svg')
+        self.results_report        = os.path.join(outdir, 'outputs', name+'_report.svg')
+
+        # Optional CSV output paths, enabled with `-csv` flag
+        self.autobreak_csv_file    = os.path.join(outdir, 'outputs', name+'_autobreak.csv')
+        self.summary_csv_file      = os.path.join(outdir, 'outputs', name+'_summary.csv')
+
+        # Zip archive
+        self.zip_archive_file      = f'{outdir}.zip'
+
+    def zip_results(self):
+        '''Compresses the contents of the run directory into a zip file.'''
+        utilities.zip_directory(self.output_directory, self.zip_archive_file)
+        return self.zip_archive_file
 
     def write_part_to_json(self, filename, legacy_option=True):
-        '''
-        Write part to json
-        '''
+        '''Write part to json'''
         self.origami.doc.writeToFile(filename, legacy=legacy_option)
 
     def write_start_part_to_json(self):
-        '''
-        Write the starting point for autobreak
-        '''
+        '''Write the starting point for autobreak'''
         self.origami.doc.writeToFile(self.json_start_output, legacy=True)
 
     def write_final_part_to_json(self):
-        '''
-        Write cadnano part to json
-        '''
+        '''Write cadnano part to json'''
         self.origami.doc.writeToFile(self.json_legacy_output, legacy=True)
-        self.origami.doc.writeToFile(self.json_cn25_output,   legacy=False)
 
     def set_pick_method(self, pick_method='random'):
-        '''
-        Set solution picking method
-        '''
+        '''Set solution picking method'''
         self.optim_pick_method = pick_method
 
     def set_maximum_breaks(self, maximum_num_breaks=100000):
-        '''
-        Set maximum number of breaks parameter
-        '''
+        '''Set maximum number of breaks parameter'''
         self.max_num_breaks = maximum_num_breaks
 
     def set_oligo_shuffle_parameter(self, oligo_shuffle_parameter=False):
-        '''
-        Set oligo shuffle parameter
-        '''
+        '''Set oligo shuffle parameter'''
         self.optim_shuffle_oligos = oligo_shuffle_parameter
 
     def set_solution_nums(self, solutions_per_oligo=1000, global_solutions=1000):
-        '''
-        Set solution numbers
-        '''
+        '''Set solution numbers'''
         self.NUM_OLIGO_SOLUTIONS  = solutions_per_oligo
         self.NUM_GLOBAL_SOLUTIONS = global_solutions
 
     def set_k_select(self, k_parameter='best'):
-        '''
-        Set k-select value
-        '''
+        '''Set k-select value'''
         self.k_select = k_parameter
 
     def set_break_rule(self, new_break_rule=['xstap', 'all2']):
-        '''
-        Set break rule
-        '''
+        '''Set break rule'''
         self.break_rule         = [rule for rule in new_break_rule]
         self.origami.break_rule = self.break_rule
 
     def set_verbose_output(self, verbose=False):
-        '''
-        Set verbose output
-        '''
+        '''Set verbose output'''
         self.verbose_output = verbose
 
     def shift_scaffold_sequence(self, offset=0):
-        '''
-        Shift scaffold sequence and update autobreak graphs
-        '''
+        '''Shift scaffold sequence and update autobreak graphs'''
         # Apply the offset and shift sequence
         self.origami.apply_sequence(offset)
 
@@ -876,9 +1049,7 @@ class AutoBreak:
             self.update_edge_weights()
 
     def permute_scaffold_sequence_autobreak(self, nitr=100):
-        '''
-        Permute scaffold sequence
-        '''
+        '''Permute scaffold sequence'''
         # Set start offset
         start_offset = self.origami.sequence_offset
 
@@ -890,9 +1061,11 @@ class AutoBreak:
             if nitr < final_itr:
                 final_itr = nitr
 
-        for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
-                        dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}',
-                        file=self.origami.tqdm_output_file):
+        for itr in range(0, final_itr):
+
+        # for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
+        #                 dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}',
+        #                 file=self.origami.tqdm_output_file):
 
             # Set the current offset
             current_offset = (start_offset+itr) % self.origami.scaffolds[0].length()
@@ -908,9 +1081,7 @@ class AutoBreak:
                 self.write_results(current_offset)
 
     def permute_scaffold_sequence_readonly(self, nitr=100):
-        '''
-        Permute scaffold sequence
-        '''
+        '''Permute scaffold sequence'''
         # Set start offset
         start_offset = self.origami.sequence_offset
 
@@ -922,9 +1093,10 @@ class AutoBreak:
             if nitr < final_itr:
                 final_itr = nitr
 
-        for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
-                        dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}',
-                        file=self.origami.tqdm_output_file):
+        for itr in range(0, final_itr):
+        # for itr in tqdm(range(0, final_itr), desc='Permutation loop', leave=False,
+        #                 dynamic_ncols=True, bar_format='{desc}: {percentage:3.2f}%|'+'{bar}',
+        #                 file=self.origami.tqdm_output_file):
 
             # Set the current offset
             current_offset = (start_offset+itr) % self.origami.scaffolds[0].length()
@@ -936,9 +1108,7 @@ class AutoBreak:
             self.determine_readonly_scores()
 
     def run_autobreak(self):
-        '''
-        Run basic autobreak protocol
-        '''
+        '''Run basic autobreak protocol'''
 
         # Create stepwise group solutions
         self.create_stepwise_group_solutions()
@@ -950,9 +1120,7 @@ class AutoBreak:
         self.combine_group_solutions()
 
     def determine_oligo_scores(self):
-        '''
-        Determine oligo scores from design
-        '''
+        '''Determine oligo scores from design'''
         # Make break-break graph
         self.origami.prepare_origami()
 
@@ -972,12 +1140,13 @@ class AutoBreak:
         self.combine_oligo_solutions()
 
     def create_stepwise_group_solutions(self):
-        '''
-        Main function for solution determination
-        '''
-        for oligo_group in tqdm(self.origami.oligo_groups, desc='Main loop ',
-                                dynamic_ncols=True, bar_format='{l_bar}{bar}',
-                                file=self.origami.tqdm_output_file):
+        '''Main function for solution determination'''
+
+        for oligo_group in self.origami.oligo_groups:
+
+        # for oligo_group in tqdm(self.origami.oligo_groups, desc='Main loop ',
+        #                         dynamic_ncols=True, bar_format='{l_bar}{bar}',
+        #                         file=self.origami.tqdm_output_file):
 
             # Sort oligos by length
             oligo_group.sort_oligos_by_length(reverse=True)
@@ -991,9 +1160,7 @@ class AutoBreak:
             oligo_group.remove_incomplete_solutions()
 
     def update_edge_weights(self):
-        '''
-        Update edge weights
-        '''
+        '''Update edge weights'''
         for oligo in self.origami.oligos['staple']:
             # Visit each break object
             for current_break in oligo.breaks:
@@ -1003,9 +1170,7 @@ class AutoBreak:
                     break_edge.update_connection()
 
     def initialize(self):
-        '''
-        Initialize the connectivity maps
-        '''
+        '''Initialize the connectivity maps'''
 
         for oligo in self.origami.oligos['staple']:
             # Check oligo length, if the length is within length limits dont break it
@@ -1060,23 +1225,17 @@ class AutoBreak:
                     next_break = next_break.next_break
 
     def reset_temp_neighbor_constraints(self):
-        '''
-        Reset temporary neighbor constraints
-        '''
+        '''Reset temporary neighbor constraints'''
         for oligo in self.origami.oligos['staple']:
             oligo.reset_temp_neighbor_constraints()
 
     def determine_initial_scores(self):
-        '''
-        Determine starting scores
-        '''
+        '''Determine starting scores'''
         for oligo in self.origami.oligos['staple']:
             oligo.get_initial_score()
 
     def determine_readonly_scores(self):
-        '''
-        Determine readonly scores at a the current settings
-        '''
+        '''Determine readonly scores at a the current settings'''
         # Create a Complete Break Solution object
         new_complete_solution = CompleteBreakSolution()
 
@@ -1101,23 +1260,65 @@ class AutoBreak:
         # Add the solution to solutions list
         self.complete_solutions[self.origami.sequence_offset] = new_complete_solution
 
-    def export_initial_scores(self):
-        '''
-        Export initial scores to final excel file
-        '''
+
+    # Function to convert RGB hex to aRGB hex (with full opacity)
+    def convert_rgb_to_argb(self, hex_color):
+        return 'FF' + hex_color.lstrip('#')
+
+    # Function to determine if a hex color is dark
+    def is_color_dark(self, hex_color):
+        # Convert hex color to RGB and calculate luminance
+        hex_color = hex_color.lstrip('#')
+        rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        luminance = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])
+        return luminance < 128
+
+    # Apply formatting to all sheets in the workbook
+    def apply_formatting_to_all_sheets(self, workbook_path, column_name):
+        # Load the workbook
+        wb = openpyxl.load_workbook(workbook_path)
+
+        # Iterate over all sheets in the workbook
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+
+            # Finding the column number for the specified column name
+            column_letter = None
+            for col in sheet.iter_cols(1, sheet.max_column):
+                if col[0].value == column_name:
+                    column_letter = col[0].column_letter
+                    break
+
+            # Applying conditional formatting to the specified column across all rows
+            if column_letter:
+                for row in range(2, sheet.max_row + 1):
+                    cell = sheet[f'{column_letter}{row}']
+                    cell_value = cell.value
+                    # Only apply formatting if the cell has a value
+                    if cell_value:
+                        argb_color = self.convert_rgb_to_argb(cell_value)
+                        cell.fill = openpyxl.styles.PatternFill(start_color=argb_color, end_color=argb_color, fill_type="solid")
+                        font_color = "FFFFFF" if self.is_color_dark(cell_value) else "000000"
+                        cell.font = openpyxl.styles.Font(color=font_color)
+
+        # Save the changes to the Excel file
+        wb.save(workbook_path)
+
+    def export_initial_scores(self, write_csv=False):
+        '''Export initial scores to final excel file'''
 
         # Create a dummy Complete Break Solution object
         self.final_complete_break_solution = CompleteBreakSolution()
 
-        # Store final cvs rows
-        self.final_cvs_rows = []
+        # Store final csv rows
+        self.final_csv_rows = []
 
         # Save total score and prob
         total_score = 0
         total_prob  = 1.0
         total_dsDNA = 0.0
         for oligo in self.origami.oligos['staple']:
-            self.final_cvs_rows.append(oligo.end_to_end_edge.get_cvs_row_object())
+            self.final_csv_rows.append(oligo.end_to_end_edge.get_csv_row_object())
 
             # Add scores
             total_score += oligo.initial_score
@@ -1135,62 +1336,61 @@ class AutoBreak:
                                    ['TotalNormScore', total_norm_score]]
 
         # Check if the data arrays are empty
-        if len(self.final_cvs_rows) == 0:
+        if len(self.final_csv_rows) == 0:
             return
 
         # Results header
-        cvs_header = self.final_complete_break_solution.cvs_header
+        csv_header = self.final_complete_break_solution.csv_header
 
         # Write the results
-        writer      = pandas.ExcelWriter(self.autobreak_excel_file,
-                                         engine='openpyxl')
+        if os.path.exists(self.results_excel_file):
+            writer     = pd.ExcelWriter(self.results_excel_file, engine='openpyxl', mode='a', if_sheet_exists="overlay")
+        else:
+            writer     = pd.ExcelWriter(self.results_excel_file, engine='openpyxl', mode='w')
 
         # Create data frames
-        summary_frame = pandas.DataFrame(np.array(self.final_summary_data))
+        self.summary_frame = pd.DataFrame(np.array(self.final_summary_data)).T
 
         # Create staples frames
-        staples_frame  = pandas.DataFrame(np.array(self.final_cvs_rows))
+        self.staples_frame = pd.DataFrame(np.array(self.final_csv_rows), columns=self.csv_header).sort_values(by='Tf')
 
         # Write summary data
-        summary_frame.to_excel(writer, sheet_name=str('final'), header=None, index=False)
+        self.summary_frame.to_excel(writer, sheet_name=str('Summary'), header=None, index=False)
 
         # Write staples data
-        staples_frame.to_excel(writer, sheet_name=str('final'), header=cvs_header, index=False, startrow=10)
+        self.staples_frame.to_excel(writer, sheet_name=str('Final'), header=csv_header, index=False)
 
         # Save writer and close
-        writer.save()
         writer.close()
 
-        # Write the csv files
-        with open(self.autobreak_csv_file, 'w', newline='') as csvfile:
-            autobreakwriter = csv.writer(csvfile, delimiter=',')
-            autobreakwriter.writerow(cvs_header)
-            autobreakwriter.writerows(self.final_cvs_rows)
+        # Apply heatmap coloring
+        self.apply_formatting_to_all_sheets(self.results_excel_file, 'TfColor')
 
-        with open(self.summary_csv_file, 'w', newline='') as csvfile:
-            autobreakwriter = csv.writer(csvfile, delimiter=',')
-            autobreakwriter.writerows(self.final_summary_data)
+        # Write the csv files
+        if write_csv:
+            with open(self.autobreak_csv_file, 'w', newline='') as csvfile:
+                autobreakwriter = csv.writer(csvfile, delimiter=',')
+                autobreakwriter.writerow(csv_header)
+                autobreakwriter.writerows(self.final_csv_rows)
+
+            with open(self.summary_csv_file, 'w', newline='') as csvfile:
+                autobreakwriter = csv.writer(csvfile, delimiter=',')
+                autobreakwriter.writerows(self.final_summary_data)
 
     def create_oligo_solutions(self):
-        '''
-        Break oligos
-        '''
+        '''Break oligos'''
         for oligo in self.origami.oligos['staple']:
             if not oligo.dont_break:
                 oligo.generate_shortest_paths(self.NUM_OLIGO_SOLUTIONS, verbose=self.verbose_output)
                 oligo.remove_penalized_solutions()
 
     def combine_oligo_solutions(self):
-        '''
-        Create oligo group solutions
-        '''
+        '''Create oligo group solutions'''
         for oligo_group in self.origami.oligo_groups:
             oligo_group.combine_oligo_solutions(self.NUM_GLOBAL_SOLUTIONS)
 
     def sort_group_solutions(self):
-        '''
-        Sort group solutions based on penalty score
-        '''
+        '''Sort group solutions based on penalty score'''
         for oligo_group in self.origami.oligo_groups:
             oligo_group.sort_solutions()
 
@@ -1199,9 +1399,7 @@ class AutoBreak:
                 oligo_group.print_solutions()
 
     def combine_group_solutions(self):
-        '''
-        Combine group solutions
-        '''
+        '''Combine group solutions'''
 
         # Make new complete solution
         new_complete_solution = CompleteBreakSolution()
@@ -1222,9 +1420,7 @@ class AutoBreak:
             self.complete_solutions[self.origami.sequence_offset] = new_complete_solution
 
     def compare_complete_solutions(self):
-        '''
-        Compare complete solutions
-        '''
+        '''Compare complete solutions'''
         # Sort complete solutions
         self.sorted_complete_solutions = sorted(list(self.complete_solutions.values()),
                                                 key=lambda solution: solution.total_score, reverse=True)
@@ -1232,13 +1428,29 @@ class AutoBreak:
         # Print the scores
         for complete_solution in self.sorted_complete_solutions:
             # Print total score and crossover penalty for the best solution
-            tqdm.write('Complete solutions: Offset: %-5d' % (complete_solution.sequence_offset) +
-                       ' - CorrectedOffset: %-5d' % (complete_solution.corrected_offset) +
-                       ' - TotalProb:%-5.2f' % (complete_solution.total_prob) +
-                       ' - TotalScore:%-5.2f' % (complete_solution.total_score) +
-                       ' - TotalNormScore:%-5.2f' % (complete_solution.total_norm_score) +
-                       ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty),
-                       file=self.origami.std_output_file)
+
+            # solution = 'Complete solutions: Offset: %-5d' % (complete_solution.sequence_offset) + \
+            #            ' - CorrectedOffset: %-5d' % (complete_solution.corrected_offset) +\
+            #            ' - TotalProb:%-5.3f' % (complete_solution.total_prob) +\
+            #            ' - TotalScore:%-5.3f' % (complete_solution.total_score) +\
+            #            ' - TotalNormScore:%-5.3f' % (complete_solution.total_norm_score) +\
+            #            ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty)
+
+            # Simplified output
+            solution = 'Results: (higher is better)\n'+\
+                       ' Best solution score: %.5f\n' % (complete_solution.total_score) +\
+                       ' Normalized (by sum of duplex lengths) = %d): %f ' % \
+                       (complete_solution.total_dsDNA_length, complete_solution.total_norm_score)
+
+            logging.info(solution)
+            print(solution)
+            # tqdm.write('Complete solutions: Offset: %-5d' % (complete_solution.sequence_offset) +
+            #            ' - CorrectedOffset: %-5d' % (complete_solution.corrected_offset) +
+            #            ' - TotalProb:%-5.3f' % (complete_solution.total_prob) +
+            #            ' - TotalScore:%-5.3f' % (complete_solution.total_score) +
+            #            ' - TotalNormScore:%-5.3f' % (complete_solution.total_norm_score) +
+            #            ' - TotalCrossoverPenalty:%-3d' % (complete_solution.total_penalty),
+            #            file=self.origami.std_output_file)
 
         # Assign best solution
         if len(self.sorted_complete_solutions) > 0:
@@ -1246,7 +1458,7 @@ class AutoBreak:
 
     def correct_complete_solution_offsets(self):
         '''
-        Correct complete solution offsets based on the difference between actualy start pos
+        Correct complete solution offsets based on the difference between actual start pos
         and the current start positions
         '''
         offset_difference = self.origami.get_scaffold_distance(self.origami.current_start_pos,
@@ -1259,18 +1471,14 @@ class AutoBreak:
                                                   offset_difference) % self.origami.scaffolds[0].length()
 
     def set_best_sequence_offset(self):
-        '''
-        Set best sequence offset
-        '''
+        '''Set best sequence offset'''
         # Best sequence offset
         if self.best_complete_solution:
             self.origami.sequence_offset  = self.best_complete_solution.sequence_offset
             self.origami.corrected_offset = self.best_complete_solution.corrected_offset
 
     def break_best_complete_solution(self):
-        '''
-        Oligo breaking routine
-        '''
+        '''Oligo breaking routine'''
         if self.best_complete_solution is None:
             sys.exit('SOLUTION DOESNT EXIST!')
 
@@ -1280,15 +1488,11 @@ class AutoBreak:
                 self.best_complete_solution.group_solutions[key].break_group_solution()
 
     def set_score_func(self, func_args):
-        '''
-        Set optimization score functions
-        '''
+        '''Set optimization score functions'''
         self.optim_score_functions = func_args
 
     def set_optimization_func(self, func_args):
-        '''
-        Set optimization function
-        '''
+        '''Set optimization function'''
         self.optim_args         = func_args
         self.optim_args_funcs   = [function[0] for function in func_args]
         self.optim_args_params  = [[float(x) for x in function[1:]] for function in func_args]
@@ -1309,9 +1513,7 @@ class AutoBreak:
                     self.optim_params_dict[func][j] = params[j]
 
     def optimize(self, edge):
-        '''
-        final optimization function
-        '''
+        '''final optimization function'''
         score = 0
         # Get the score for each function type
         score_list = np.array([func(edge) for func in self.optimize_func_list])
@@ -1323,89 +1525,63 @@ class AutoBreak:
         return score
 
     def _optimize_structure(self, edge):
-        '''
-        Optimization function for structure
-        '''
+        '''Optimization function for structure'''
         return edge.edge_structure*self.optim_params_dict['structure'][0]
 
     def _optimize_dG(self, edge):
-        '''
-        Optimization function dG
-        '''
+        '''Optimization function dG'''
         return edge.edge_logprob
 
     def _optimize_14(self, edge):
-        '''
-        Optimization function 14
-        '''
+        '''Optimization function 14'''
         return edge.edge_has14
 
     def _optimize_16(self, edge):
-        '''
-        Optimization function 16
-        '''
+        '''Optimization function 16'''
         return edge.edge_has16
 
     def _optimize_length(self, edge):
-        '''
-        Optimization function 16
-        '''
+        '''Optimization function 16'''
         return edge.edge_length
 
     def _optimize_maxseq(self, edge):
-        '''
-        Optimization function for N
-        '''
+        '''Optimization function for N'''
         return int(edge.edge_maxseq >= self.optim_params_dict['maxseq'][0])
 
     def _optimize_Tm(self, edge):
-        '''
-        Optimization function Tm
-        '''
+        '''Optimization function Tm'''
         return edge.edge_maxTm
 
     def _gauss_length(self, edge):
-        '''
-        Optimization function gauss length
-        '''
+        '''Optimization function gauss length'''
 
         return np.exp(-(edge.edge_length -
                       self.optim_params_dict['glength'][0])**2/self.optim_params_dict['glength'][1]**2)
 
     def _gauss_Tm(self, edge):
-        '''
-        Optimization function gauss Tm
-        '''
+        '''Optimization function gauss Tm'''
 
         return np.exp(-(edge.edge_maxTm-self.optim_params_dict['gTm'][0])**2/self.optim_params_dict['gTm'][1]**2)
 
     def _gauss_maxseq(self, edge):
-        '''
-        Optimization function gauss Tm
-        '''
+        '''Optimization function gauss Tm'''
 
         return np.exp(-(edge.edge_maxseq -
                       self.optim_params_dict['gmaxseq'][0])**2/self.optim_params_dict['gmaxseq'][1]**2)
 
     def _log_length(self, edge):
-        '''
-        Optimization function gauss length
-        '''
+        '''Optimization function gauss length'''
 
         return (-(edge.edge_length -
                 self.optim_params_dict['glength'][0])**2/self.optim_params_dict['glength'][1]**2)
 
     def _log_Tm(self, edge):
-        '''
-        Optimization function gauss Tm
-        '''
+        '''Optimization function gauss Tm'''
 
         return (-(edge.edge_maxTm-self.optim_params_dict['gTm'][0])**2/self.optim_params_dict['gTm'][1]**2)
 
     def _log_maxseq(self, edge):
-        '''
-        Optimization function gauss Tm
-        '''
+        '''Optimization function gauss Tm'''
 
         return (-(edge.edge_maxseq -
                 self.optim_params_dict['gmaxseq'][0])**2/self.optim_params_dict['gmaxseq'][1]**2)
@@ -1413,9 +1589,7 @@ class AutoBreak:
 
 class BreakEdge:
     def __init__(self):
-        '''
-        Break edge class
-        '''
+        '''Break edge class'''
         self.autobreak     = None
         self.origami       = None
         self.current_break = None
@@ -1446,85 +1620,128 @@ class BreakEdge:
         # Loop parameter
         self.isloop        = False
 
-    def get_cvs_row_object(self):
+        # Output/plot parameters
+        self.csv_params    = {} 
+
+
+    def create_csv_params(self):
         '''
-        Return cvs row object
+        Create params dictionary from thermodynamic parameters
 
         COLUMNS
-        1.  Oligo key
-        2.  Oligo Group key
-        3.  Break 1 key
-        4.  Break 1 type
-        5.  Break 1 location
-        6.  Break 2 key
-        7.  Break 2 type
-        8.  Break 2 location
-        9.  Length
+         1.  Oligo key
+         2.  Oligo Group key
+         3.  Break 1 key
+         4.  Break 1 type
+         5.  Break 1 location
+         6.  Break 2 key
+         7.  Break 2 type
+         8.  Break 2 location
+         9.  Length
         10.  Sequence
         11.  Edge weight
         12.  ProbFolding
         13.  Log-Probfolding
         14.  Tf
-        15. maxTm
-        16. maxSeq
-        17. has14
-        18. dGtotal
-        19. dGintrin
-        20. dGloop
-        21. dGconc
-
+        15.  TfColor
+        16.  maxTm
+        17.  maxSeq
+        18.  has14
+        19.  dGtotal
+        20.  dGintrin
+        21.  dGloop
+        22.  dGconc
         '''
-
-        # Check if the oligo group exists
-        # Doesn't exist if the clustering is not performed
 
         oligo_group_key = -1
         if self.current_break.oligo_group:
             oligo_group_key = self.current_break.oligo_group.key
+        self.csv_params = {'OligoKey': '.'.join([str(x) for x in self.current_break.oligo.key]),
+                           'OligoGroupKey': oligo_group_key,
+                           'StartBreakKey': '.'.join([str(x) for x in self.current_break.key]),
+                           'StartBreakType': self.current_break.type,
+                           'StartBreakLocation':self.current_break.location,
+                           'EndBreakKey': '.'.join([str(x) for x in self.next_break.key]),
+                           'EndBreakType': self.next_break.type,
+                           'EndBreakLocation': self.next_break.location,
+                           'Length': self.edge_length,
+                           'Sequence': ''.join([str(x) for x in self.ssDNA_seq_list]),
+                           'EdgeWeight': self.edge_weight,
+                           'ProbFold': self.edge_prob,
+                           'LogProbFold': self.edge_logprob,
+                           'Tf': self.edge_Tf,
+                           'TfColor': self.get_TfColor(self.edge_Tf),
+                           'maxTm': self.edge_maxTm,
+                           'maxSeqLength': self.edge_maxseq,
+                           'Has14': int(self.edge_has14),
+                           'dGtotal': self.dG_total,
+                           'dGhyb': np.sum(self.dG_intrin_list),
+                           'dGloop': np.sum(self.dG_inter_list),
+                           'dGconc': self.dG_conc}
 
-        cvs_row =      ['.'.join([str(x) for x in self.current_break.oligo.key]),
-                        oligo_group_key,
-                        '.'.join([str(x) for x in self.current_break.key]),
-                        self.current_break.type,
-                        self.current_break.location,
-                        '.'.join([str(x) for x in self.next_break.key]),
-                        self.next_break.type,
-                        self.next_break.location,
-                        self.edge_length,
-                        ''.join([str(x) for x in self.ssDNA_seq_list]),
-                        self.edge_weight,
-                        self.edge_prob,
-                        self.edge_logprob,
-                        self.edge_Tf,
-                        self.edge_maxTm,
-                        self.edge_maxseq,
-                        int(self.edge_has14),
-                        self.dG_total,
-                        np.sum(self.dG_intrin_list),
-                        np.sum(self.dG_inter_list),
-                        self.dG_conc]
 
-        return cvs_row
+    def get_TfColor(self, Tf, min_Tf=30, max_Tf=70):
+        cmap = mpl.cm.get_cmap('coolwarm', max_Tf-min_Tf+1).reversed()
+
+        # Get color index
+        if Tf <= min_Tf:
+            cmap_index = 0 
+        elif Tf >= max_Tf:
+            cmap_index = max_Tf-min_Tf
+        else:
+            cmap_index = int(Tf-min_Tf)
+
+        rgb = cmap(cmap_index)[:3]     # Get RGB value 
+        hexcolor = mpl.colors.rgb2hex(rgb) # Get HEX value
+        return hexcolor
+
+    def get_csv_row_object(self):
+        '''Return csv row object'''
+
+        # Check if the oligo group exists
+        # Doesn't exist if the clustering is not performed
+
+        # Create csv parameters
+        self.create_csv_params()
+
+        csv_row = [self.csv_params['OligoKey'],
+                   self.csv_params['OligoGroupKey'],
+                   self.csv_params['StartBreakKey'],
+                   self.csv_params['StartBreakType'],
+                   self.csv_params['StartBreakLocation'],
+                   self.csv_params['EndBreakKey'],
+                   self.csv_params['EndBreakType'],
+                   self.csv_params['EndBreakLocation'],
+                   self.csv_params['Length'],
+                   self.csv_params['Sequence'],
+                   self.csv_params['EdgeWeight'],
+                   self.csv_params['ProbFold'],
+                   self.csv_params['LogProbFold'],
+                   self.csv_params['Tf'],
+                   self.csv_params['TfColor'],
+                   self.csv_params['maxTm'],
+                   self.csv_params['maxSeqLength'],
+                   self.csv_params['Has14'],
+                   self.csv_params['dGtotal'],
+                   self.csv_params['dGhyb'],
+                   self.csv_params['dGloop'],
+                   self.csv_params['dGconc'] ]
+
+        return csv_row
 
     def set_edge_weight(self):
-        '''
-        Set edge weight
-        '''
+        '''Set edge weight'''
         self.edge_weight = self.origami.autobreak.optimize(self)
 
     def is_valid(self):
-        '''
-        Determine if edge is valid
-        '''
+        '''Determine if edge is valid'''
         return self.valid and self.active and (not self.current_break.dont_break and
                                                not self.next_break.dont_break and
                                                not self.current_break.dont_break_temp and
                                                not self.next_break.dont_break_temp)
 
     def make_connection(self, from_break, to_break):
-        '''
-        Make the connection between two break nodes
-        '''
+        '''Make the connection between two break nodes'''
 
         # Set the break nodes
         self.current_break = from_break
@@ -1534,9 +1751,7 @@ class BreakEdge:
         self.update_connection()
 
     def update_connection(self):
-        '''
-        Update edge weights
-        '''
+        '''Update edge weights'''
 
         # Get the temperature parameter for dG optimization
         temperature_kelvin = self.autobreak.optim_temperature_kelvin
@@ -1633,7 +1848,7 @@ class BreakEdge:
         for dna in self.dsDNA_seq_list:
             (dGintrin,
              dHintrin,
-             dSintrin) = utilities.sequence_to_dG(dna, temperature_kelvin)
+             dSintrin) = utilities.sequence_to_dG_dH_dS(dna, temperature_kelvin)
 
             # Add free energies to the lists
             self.dG_intrin_list.append(dGintrin)
@@ -1645,19 +1860,22 @@ class BreakEdge:
         self.dH_intrin_list = np.array(self.dH_intrin_list)
         self.dS_intrin_list = np.array(self.dS_intrin_list)
 
-        # Get scaffold length
+        # Get scaffold parameters
         scaffold_length   = self.origami.oligos['scaffold'][0].length
-        scaffold_circular = self.origami.oligos['scaffold'][0].circular
+        is_scaffold_circular = self.origami.oligos['scaffold'][0].circular
 
         # 2. Determine interfacial coupling energies
         self.dG_inter_list = []
         self.dS_inter_list = []
 
         for i in range(len(self.dsDNA_mean_pos_list)-1):
-            dGinter, dSinter = utilities.position_to_loop_dG(self.dsDNA_mean_pos_list[i],
-                                                             self.dsDNA_mean_pos_list[i+1],
-                                                             scaffold_length, scaffold_circular,
-                                                             temperature_kelvin)
+            dGinter, dSinter = utilities.position_to_loop_dG(
+                scaffold_length,
+                self.dsDNA_mean_pos_list[i],
+                self.dsDNA_mean_pos_list[i+1],
+                is_scaffold_circular,
+                temperature_kelvin
+            )
             self.dG_inter_list.append(dGinter)
             self.dS_inter_list.append(dSinter)
 
@@ -1672,7 +1890,7 @@ class BreakEdge:
         self.dS_conc = dSconc
 
         # Get RT values
-        self.RT = 0.593/298.15*temperature_kelvin
+        self.RT = utilities.R * temperature_kelvin
 
         # 4. Get total energies
         self.dG_total = np.sum(self.dG_intrin_list) + np.sum(self.dG_inter_list) + self.dG_conc
@@ -1685,7 +1903,7 @@ class BreakEdge:
         # 6. Determine log-probabilities
         self.edge_logprob = np.log(self.edge_prob)
 
-        # 7. Determine Tf in Celcius
+        # 7. Estimate Tf in °C (∆G = ∆H-T∆S, when ∆G is 0)
         self.edge_Tf = self.dH_total/self.dS_total - 273.15
 
         # Determine lengths
@@ -1726,9 +1944,7 @@ class BreakEdge:
             self.valid = False
 
     def make_loop_edge(self):
-        '''
-        Make loop edge
-        '''
+        '''Make loop edge'''
         if self.current_break == self.next_break:
             self.isloop                  = True
             self.current_break.loop_edge = self
@@ -1736,9 +1952,7 @@ class BreakEdge:
 
 class BreakPath:
     def __init__(self, break_node, break_edge=None, score=0):
-        '''
-        Break path object
-        '''
+        '''Break path object'''
         self.break_node = break_node
         self.break_edge = break_edge
         self.score      = score
@@ -1746,9 +1960,7 @@ class BreakPath:
 
 class BreakNode:
     def __init__(self):
-        '''
-        Break node class
-        '''
+        '''Break node class'''
         self.crossover        = None
         self.next_break       = None
         self.previous_break   = None
@@ -1787,9 +1999,7 @@ class BreakNode:
         self.order_id            = None
 
     def is_dsDNA(self):
-        '''
-        Determine if the break node is located on dsDNA
-        '''
+        '''Determine if the break node is located on dsDNA'''
         # Initialize dsDNA parameters
         current_dsDNA = True
         next_dsDNA = True
@@ -1820,25 +2030,19 @@ class BreakNode:
         self.k_potential_paths = []
 
     def is_break_edge_possible(self, other_break):
-        '''
-        Check if break edge is possible from self to to another break node for a circular oligo
-        '''
+        '''Check if break edge is possible from self to to another break node for a circular oligo'''
         order_difference = self.get_break_order_difference(other_break)
 
         # Criteria for a proper connection (no loop) in the right direction
         return order_difference > 0 or (not order_difference == 0 and order_difference == -self.order_id)
 
     def get_loop_edge(self):
-        '''
-        Return loop edge
-        '''
+        '''Return loop edge'''
 
         return self.loop_edge
 
     def get_break_distance(self, other_break):
-        '''
-        Break to break distance
-        '''
+        '''Break to break distance'''
         distance = other_break.distance - self.distance
         if distance <= 0 and self.oligo.circular:
             return distance+self.oligo.length
@@ -1846,30 +2050,22 @@ class BreakNode:
             return distance
 
     def get_break_order_difference(self, other_break):
-        '''
-        Return break to order id difference
-        '''
+        '''Return break to order id difference'''
         return other_break.order_id - self.order_id
 
     def get_valid_edge_nodes(self):
-        '''
-        Get break nodes connected by edges
-        '''
+        '''Get break nodes connected by edges'''
         # Get the connected break nodes
         return [break_edge.next_break for break_edge in self.break_edges if not break_edge.next_break.dont_break]
 
     def get_valid_edges(self):
-        '''
-        Get edges that lead to break nodes that can be broken
-        '''
+        '''Get edges that lead to break nodes that can be broken'''
 
         # Get the connected break nodes
         return [break_edge for break_edge in self.break_edges if break_edge.is_valid()]
 
     def get_k_shortest_paths(self, final_break, k_num=10, k_select='best'):
-        '''
-        Get k-shortest path results
-        '''
+        '''Get k-shortest path results'''
         # Initialize k-shortest paths
         self.k_shortest_paths = []
 
@@ -1962,9 +2158,7 @@ class BreakNode:
         return self.k_shortest_paths
 
     def get_shortest_path(self, final_break):
-        '''
-        Find the shortest path between current and final break points
-        '''
+        '''Find the shortest path between current and final break points'''
         # Initialize the set and stack
         stack = [self]
 
@@ -2084,9 +2278,7 @@ class BreakNode:
         return self.shortest_path
 
     def get_connected_breaks(self):
-        '''
-        Return connected breaks
-        '''
+        '''Return connected breaks'''
         # Initialize connected breaks
         self.connected_breaks = []
 
@@ -2105,18 +2297,14 @@ class BreakNode:
         return self.connected_breaks
 
     def break_cadnano(self):
-        '''
-        Break the breaknode
-        '''
+        '''Break the breaknode'''
         if self.type == 'crossover':
             self.origami.remove_cadnano_crossover(self.vh, self.idx, self.direction)
         else:
             self.origami.split_cadnano_strand(self.vh, self.idx, self.direction)
 
     def depth_first_search(self):
-        '''
-        Depth-first-search graph traverse algorithm to find connected components
-        '''
+        '''Depth-first-search graph traverse algorithm to find connected components'''
         # Initialize the set and stack
         visited, stack = set(), [self]
         while stack:
@@ -2138,66 +2326,63 @@ class BreakNode:
         return list(visited)
 
 
-def main():
+class DefaultArgs(argparse.Namespace):
+    input     = None         # Cadnano json file
+    output    = None         # Output directory
+    rule      = 'xstap.all3' # Break rule
+    score     = 'sum'        # Optimization score operator
+    func      = 'dG:50'      # Optimization function
+    sequence  = None   # Sequence file in txt"
+    nsol      = 10     # Number of solutions", default=10)
+    minlength = 21     # Minimum staple length", default=21)
+    maxlength = 60     # Maximum staple length", default=60)
+    dontbreak = 0      # Dont break oligos less than the length specified", default=0)
+    verbose   = 1      # Verbosity level (0, 1, 2)
+    npermute  = 0      # Number of permutation iterations
+    seed      = 0      # Random seed
+    readonly  = False  # Read-only to determine oligo scores
+    sort      = False  # Sort oligos for stepwise optimization.
+    permute   = False  # Permute sequence
+    writeall  = False  # Write all results
+    csv       = False  # Export results in csv format
 
+def parse_args_from_shell():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("-i",   "--input",    type=str,
-                        help="Cadnano json file")
-
-    parser.add_argument("-o",   "--output",    type=str,
-                        help="Output directory", default=None)
-
-    parser.add_argument("-readonly",   "--readonly",  action='store_true',
-                        help="Read-only to determine oligo scores")
-
-    parser.add_argument("-rule",   "--rule",     type=str, default='xstap.all3',
-                        help="Break rule")
-
-    parser.add_argument("-score",   "--score",     type=str, default='sum',
-                        help="Optimization score function")
-
-    parser.add_argument("-func",   "--func",     type=str, default='dG:50',
-                        help="Optimization function")
-
-    parser.add_argument("-seq",   "--sequence", type=str, default=None,
-                        help="Sequence file in txt")
-
-    parser.add_argument("-sort", "--sort", action='store_true',
-                        help="Sort oligos for stepwise optimization.")
-
-    parser.add_argument("-nsol",   "--nsol",     type=int,
-                        help="Number of solutions", default=10)
-
-    parser.add_argument("-minlength",   "--minlength",     type=int,
-                        help="Minimum staple length", default=21)
-
-    parser.add_argument("-maxlength",   "--maxlength",     type=int,
-                        help="Maximum staple length", default=60)
-
-    parser.add_argument("-dontb",   "--dontbreak",  type=int,
-                        help="Dont break oligos less than the length specified", default=0)
-
-    parser.add_argument("-verbose",   "--verbose",  type=int, choices=[0, 1, 2],
-                        help="Verbose output", default=1)
-
-    parser.add_argument("-permute",   "--permute",  action='store_true',
-                        help="Permute sequence")
-
-    parser.add_argument("-npermute",  "--npermute",  type=int,
-                        help="Number of permutation iterations", default=0)
-
-    parser.add_argument("-writeall",   "--writeall",  action='store_true',
-                        help="Write all results")
-
-    parser.add_argument("-seed",   "--seed",  type=int, default=0,
-                        help="Random seed")
-
+    parser.add_argument("-i",         "--input",     type=str, help="Cadnano json file")
+    parser.add_argument("-o",         "--output",    type=str, help="Output directory", default=None)
+    parser.add_argument("-rule",      "--rule",      type=str, default='xstap.all3', help="Break rule")
+    parser.add_argument("-score",     "--score",     type=str, default='sum', help="Optimization score function")
+    parser.add_argument("-func",      "--func",      type=str, default='dG:50', help="Optimization function")
+    parser.add_argument("-seq",       "--sequence",  type=str, default=None,help="Sequence file in txt")
+    parser.add_argument("-nsol",      "--nsol",      type=int, help="Number of solutions", default=10)
+    parser.add_argument("-minlength", "--minlength", type=int, help="Minimum staple length", default=21)
+    parser.add_argument("-maxlength", "--maxlength", type=int, help="Maximum staple length", default=60)
+    parser.add_argument("-dontb",     "--dontbreak", type=int, help="Dont break oligos less than the length specified", default=0)
+    parser.add_argument("-verbose",   "--verbose",   type=int, choices=[0, 1, 2], help="Verbose output", default=1)
+    parser.add_argument("-npermute",  "--npermute",  type=int, help="Number of permutation iterations", default=0)
+    parser.add_argument("-seed",      "--seed",      type=int, default=0, help="Random seed")
+    parser.add_argument("-readonly",  "--readonly",  action='store_true', help="Read-only to determine oligo scores")
+    parser.add_argument("-sort",      "--sort",      action='store_true', help="Sort oligos for stepwise optimization.")
+    parser.add_argument("-permute",   "--permute",   action='store_true', help="Permute sequence")
+    parser.add_argument("-writeall",  "--writeall",  action='store_true', help="Write all results")
+    parser.add_argument("-csv",       "--csv",       action='store_true', help="Export results in csv format")
     args = parser.parse_args()
 
     # Check if the required arguments are passed to the code
     if args.input is None:
         parser.print_help()
+        sys.exit('Missing input file')
+
+    # Check if input file exists
+    if not os.path.isfile(args.input):
         sys.exit('Input file does not exist!')
+
+    return args
+
+def run(is_notebook_session, args=None):
+
+    if not is_notebook_session:
+        args = parse_args_from_shell()
 
     # Assign the parameters
     input_filename          = args.input
@@ -2233,11 +2418,9 @@ def main():
                  'permute': args.permute,
                  'npermute': args.npermute,
                  'writeall': args.writeall,
+                 'csv': args.csv,
                  'sort': args.sort}
 
-    # Check if input file exists
-    if not os.path.isfile(input_filename):
-        sys.exit('Input file does not exist!')
 
     # Set random seed in order to get the same results with the same set of parameters
     random.seed(random_seed)
@@ -2281,17 +2464,6 @@ def main():
 
     # Set output directory
     new_autobreak.set_output_directory(input_filename, output_directory)
-
-    # Stdout log file
-    if args.verbose == 0:
-        # log file
-        log_file = new_autobreak.output_directory+'/stdout.log'
-        new_origami.set_tqdm_output_file(open(os.devnull, 'w'))
-
-        # Direct stout and stderr to log file
-        sys.stdout = open(log_file, 'w')
-        sys.stderr = sys.stdout
-        new_origami.set_std_output_file(sys.stdout)
 
     # Set write all flag
     new_autobreak.set_write_all_results(write_all_results)
@@ -2373,10 +2545,10 @@ def main():
         new_autobreak.compare_complete_solutions()
 
         # Write results summary
-        new_autobreak.write_results_summary()
+        # new_autobreak.write_results_summary()
 
         # Write best result
-        new_autobreak.write_best_result()
+        # new_autobreak.write_best_result()
 
         # Break best solutions
         new_autobreak.break_best_complete_solution()
@@ -2387,11 +2559,14 @@ def main():
     # Read only the scores
     new_autobreak.determine_oligo_scores()
 
+    # Export initial score report (XLSX + optional CSV)
+    new_autobreak.export_initial_scores(write_csv=args.csv)
+
+    # Calculate min/max score parameters
+    new_autobreak.calc_minmax_plot_params()
+
     # Color oligos by folding prob
     new_autobreak.color_oligos_by_Tf()
-
-    # Export initial scores
-    new_autobreak.export_initial_scores()
 
     # Split scaffold
     new_origami.split_scaffold()
@@ -2405,6 +2580,28 @@ def main():
     # Write sequence file to output directory
     new_autobreak.copy_sequence_file()
 
+    # Generate Cadnano schematic in SVG format using cn2svg
+    new_autobreak.create_staple_heatmap(is_notebook_session)
 
-if __name__ == "__main__":
-    main()
+    # Generate Staple Results plot in SVG format using matplotlib
+    new_autobreak.create_results_plots()
+
+    # Compose Cadnano schematic and Results plots using svgutils
+    new_autobreak.create_summary_figure()
+
+    # Print output
+    new_autobreak.first_run_message()
+
+    # Zip output if notebook session
+    if is_notebook_session:
+        return new_autobreak.zip_results()
+
+def main():
+    try:
+        __IPYTHON__
+        is_notebook_session = True
+    except NameError:
+        is_notebook_session = False
+
+    print("Notebook" if is_notebook_session else "Console", "mode.")
+    run(is_notebook_session)
