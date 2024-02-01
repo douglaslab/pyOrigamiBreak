@@ -1,40 +1,25 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# @Date    : 2018-05-21 13:40:55
-# @Author  : Your Name (you@example.org)
-# @Link    : http://example.org
-# @Version : $Id$
-
+import logging
+import math
 import random
 import os
-import matplotlib
-import math
-import cadnano
-import numpy as np
 import sys
-
-from tqdm import tqdm
-from matplotlib import cm
+import numpy as np
+import matplotlib as mpl
+from matplotlib import pyplot as plt
+from fastprogress.fastprogress import master_bar, progress_bar
+import cadnano
 from cadnano.document import Document
 
-import autobreak
-import utilities
-
-matplotlib.use('TkAgg')
-
+from autobreak import autobreak, scaffolds, utilities
 
 class Sequence:
     def __init__(self):
-        '''
-        DNA sequence class
-        '''
+        '''DNA sequence class'''
         self.dna           = None
         self.next_sequence = None
 
     def assign_scaffold_positions(self):
-        '''
-        Assign scaffold positions
-        '''
+        '''Assign scaffold positions'''
         self.scaffoldPos = []
         for idx in range(self.idx5p, self.idx3p+self.direction, self.direction):
             # Get scaffold position
@@ -46,9 +31,7 @@ class Sequence:
 
 class OligoGroup:
     def __init__(self):
-        '''
-        Oligo group connected to each other through break point neighborship
-        '''
+        '''Oligo group connected to each other through breakpoint neighborship'''
         self.key                   = None
         self.oligos                = None
         self.breaks                = None
@@ -57,34 +40,24 @@ class OligoGroup:
         self.best_penalty_solution = None
 
     def remove_incomplete_solutions(self):
-        '''
-        Remove incomplete group solutions
-        '''
+        '''Remove incomplete group solutions'''
         self.group_solutions = list(filter(lambda x: x.complete, self.group_solutions))
 
     def shuffle_oligos(self):
-        '''
-        Shuffle oligos
-        '''
+        '''Shuffle oligos'''
         random.shuffle(self.oligos)
 
     def sort_oligos_by_length(self, reverse=True):
-        '''
-        Sort oligos by length
-        '''
+        '''Sort oligos by length'''
         self.oligos.sort(key=lambda x: x.length, reverse=reverse)
 
     def reset_temp_neighbor_constraints(self):
-        '''
-        Reset temporary neighbor constraints
-        '''
+        '''Reset temporary neighbor constraints'''
         for oligo in self.oligos:
             oligo.reset_temp_neighbor_constraints()
 
     def combine_oligo_solutions(self, num_global_solutions=200):
-        '''
-        Create random group solutions
-        '''
+        '''Create random group solutions'''
         # Initialize group solutions
         self.group_solutions = []
 
@@ -109,18 +82,21 @@ class OligoGroup:
 
     def create_stepwise_oligo_solutions(self, num_oligo_solutions=100, num_global_solutions=500,
                                         pick_method='random', shuffle_oligos=True, verbose=False):
-        '''
-        Create stepwise oligo solutions
-        '''
+        '''Create stepwise oligo solutions'''
 
         # Initialize group solutions
         self.group_solutions = []
 
         # Number of solutions
-        for i in tqdm(range(num_global_solutions), desc='Global loop', leave=False,
-                      dynamic_ncols=True, bar_format='{l_bar}{bar}', 
-                      file=self.origami.tqdm_output_file):
+        # for i in tqdm(range(num_global_solutions), desc='Global loop', leave=False,
+        #               dynamic_ncols=True, bar_format='{l_bar}{bar}', 
+        #               file=self.origami.tqdm_output_file):
+        mb = master_bar(range(num_global_solutions))
 
+        oligo_count = len(self.oligos)
+        mb.write(f'Processing {oligo_count} oligos per design.')
+
+        for i in mb:
             # Reset temporary neighbor constraints
             self.reset_temp_neighbor_constraints()
 
@@ -134,9 +110,12 @@ class OligoGroup:
                 self.shuffle_oligos()
 
             # Iterate over every oligo
-            for oligo in tqdm(self.oligos, desc='Oligo loop', leave=False,
-                              dynamic_ncols=True, bar_format='{l_bar}{bar}',
-                              file=self.origami.tqdm_output_file):
+            # for oligo in tqdm(self.oligos, desc='Oligo loop', leave=False,
+            #                   dynamic_ncols=True, bar_format='{l_bar}{bar}',
+            #                   file=self.origami.tqdm_output_file):
+            # oligo_bar = progress_bar(range(len(self.oligos)), parent=mb)
+            for j in range(len(self.oligos)):
+                oligo = self.oligos[j]
 
                 # If oligo has dont break flag, skip
                 if oligo.dont_break:
@@ -158,6 +137,7 @@ class OligoGroup:
                 if chosen_solution:
                     chosen_solution.apply_temp_neighbor_constraints()
 
+
             # Calculate the penalties for each group solution
             new_group_solution.calculate_penalty()
 
@@ -168,10 +148,24 @@ class OligoGroup:
             # Add solution to list
             self.group_solutions.append(new_group_solution)
 
+
+            # tqdm.write('Complete:%-5s TotalScore:%-5.2f - TotalCrossoverPenalty:%-3d' %
+            #            (self.complete, self.total_score, self.total_penalty),
+            #            file=self.origami.tqdm_output_file)
+            # # Print the solutions
+            # for oligo_key in self.break_solutions:
+            #     # Print solution for oligo
+            #     tqdm.write('Solution for oligo: (%d,%d,%d)' % oligo_key,
+            #                file=self.origami.tqdm_output_file)
+            #     if self.break_solutions[oligo_key]:
+            #         self.break_solutions[oligo_key].print_solution()
+
+            score = new_group_solution.total_score
+            mb.write(f'Finished solution {i}. Score: {score:.5f}')
+
+
     def sort_solutions(self, filter_incomplete=True):
-        '''
-        Sort solutions based on the penalty score
-        '''
+        '''Sort solutions based on the penalty score'''
         # 1. Filter incomplete solutions
         if filter_incomplete:
             self.group_solutions = list(filter(lambda x: x.complete, self.group_solutions))
@@ -195,18 +189,14 @@ class OligoGroup:
             self.best_penalty_solution = None
 
     def print_solutions(self):
-        '''
-        Print solutions
-        '''
+        '''Print solutions'''
         for group_solution in self.group_solutions:
             group_solution.print_solution()
 
 
 class Nucleotide:
     def __init__(self):
-        '''
-        Nucleotide class
-        '''
+        '''Nucleotide class'''
         self.vh        = None
         self.idx       = None
         self.direction = None
@@ -219,9 +209,7 @@ class Nucleotide:
 
 class Strand:
     def __init__(self):
-        '''
-        Strand class
-        '''
+        '''Strand class'''
         self.origami      = None
         self.sequences    = []
         self.next_strand  = None
@@ -239,9 +227,7 @@ class Strand:
         self.LONG_STRAND_STEP   = 7
 
     def get_inserts(self, idx_a, idx_b):
-        '''
-        Get inserts between two idx values on a strand
-        '''
+        '''Get inserts between two idx values on a strand'''
         idx_low, idx_high = (idx_a, idx_b) if idx_b > idx_a else (idx_b, idx_a)
 
         # Get insertion length between two idx
@@ -317,9 +303,7 @@ class Strand:
         self.adjust_break_positions()
 
     def adjust_break_positions(self):
-        '''
-        Adjust relative break positions taking insers/skips into account
-        '''
+        '''Adjust relative break positions taking insers/skips into account'''
         self.all_breaks_adjusted = []
 
         for current_break in self.all_breaks:
@@ -335,9 +319,7 @@ class Strand:
 
 class Oligo:
     def __init__(self):
-        '''
-        Oligo class
-        '''
+        '''Oligo class'''
         self.cadnano_oligo       = None
         self.origami             = None
         self.strands             = None
@@ -357,10 +339,22 @@ class Oligo:
         self.best_score_solution   = None
         self.best_penalty_solution = None
 
+        # Plot parameters
+        self.plot_params   = ['Length', 
+                              'EdgeWeight',
+                              'ProbFold',
+                              'LogProbFold',
+                              'Tf',
+                              'maxTm',
+                              'maxSeqLength',
+                              'Has14',
+                              'dGtotal',
+                              'dGhyb',
+                              'dGloop',
+                              'dGconc']
+
     def break_in_half(self):
-        '''
-        Break the oligo in half
-        '''
+        '''Break the oligo in half'''
 
         # Get the median break
         median_break_num  = round(0.5*len(self.breaks))
@@ -377,10 +371,7 @@ class Oligo:
             self.median_break.break_cadnano()
 
     def pick_break_solution(self, method='best'):
-        '''
-        Pick a break solution
-        '''
-
+        '''Pick a break solution'''
         # Sort solutions by score
         self.sort_solutions_by_score()
 
@@ -393,15 +384,11 @@ class Oligo:
             return random.choice(self.break_solutions)
 
     def sort_solutions_by_score(self):
-        '''
-        Sort solutions by score
-        '''
+        '''Sort solutions by score'''
         self.break_solutions.sort(key=lambda x: x.score, reverse=True)
 
     def get_initial_score(self):
-        '''
-        Get the initial score before the oligo is broken
-        '''
+        '''Get the initial score before the oligo is broken'''
         # Create break
         new_edge = autobreak.BreakEdge()
 
@@ -432,19 +419,20 @@ class Oligo:
         # Set edge weight
         new_edge.edge_weight = self.origami.autobreak.optimize(new_edge)
 
+        # Create csv parameters for the edge
+        new_edge.create_csv_params()
+
         # Assign the score
         self.initial_score = new_edge.edge_weight
         self.folding_prob  = new_edge.edge_prob
         self.Tf            = new_edge.edge_Tf
         self.dsDNA_length  = sum(new_edge.dsDNA_length_list)
 
-    def color_by_folding_prob(self, color_map='bwr'):
-        '''
-        Color by the segments
-        '''
+    def color_by_csv_param(self, param='Tf', color_map='bwr'):
+        '''Color by csv param'''
 
         # Prepare the color map
-        cmap      = cm.get_cmap(color_map, 1000)
+        cmap      = mpl.cm.get_cmap(color_map, 1000)
 
         # Get color index
         cmap_index = int(1000*self.folding_prob[0])
@@ -453,46 +441,61 @@ class Oligo:
         self.rgb = cmap(cmap_index)[:3]
 
         # Get hex-color
-        self.hexcolor = matplotlib.colors.rgb2hex(self.rgb)
+        self.hexcolor = mpl.colors.rgb2hex(self.rgb)
 
         # Apply the color
         self.cadnano_oligo.applyColor(self.hexcolor)
 
-    def color_by_Tf(self, color_map='bwr', min_Tf=30, max_Tf=50):
-        '''
-        Color by the segments
-        '''
+
+
+    def color_by_folding_prob(self, color_map='bwr'):
+        '''Color by the segments'''
 
         # Prepare the color map
-        cmap      = cm.get_cmap(color_map, max_Tf-min_Tf+1)
+        cmap      = mpl.cm.get_cmap(color_map, 1000).reversed()
 
         # Get color index
-        if self.Tf <= min_Tf:
-            cmap_index = 0
-        elif self.Tf >= max_Tf:
-            cmap_index = max_Tf - min_Tf
-        else:
-            cmap_index = int(self.Tf-min_Tf)
+        cmap_index = int(1000*self.folding_prob[0])
 
         # Get RGB value
         self.rgb = cmap(cmap_index)[:3]
 
         # Get hex-color
-        self.hexcolor = matplotlib.colors.rgb2hex(self.rgb)
+        self.hexcolor = mpl.colors.rgb2hex(self.rgb)
 
         # Apply the color
         self.cadnano_oligo.applyColor(self.hexcolor)
 
+    def get_TfColor(self, Tf, min_Tf=30, max_Tf=70):
+        cmap = mpl.cm.get_cmap('coolwarm', max_Tf-min_Tf+1).reversed()
+
+        # Get color index
+        if Tf <= min_Tf:
+            cmap_index = 0 
+        elif Tf >= max_Tf:
+            cmap_index = max_Tf-min_Tf
+        else:
+            cmap_index = int(Tf-min_Tf)
+
+        # Get RGB value
+        self.rgb = cmap(cmap_index)[:3]
+
+        # Get hex-color
+        hexcolor = mpl.colors.rgb2hex(self.rgb)
+        return hexcolor
+
+    def color_by_Tf(self):
+        '''Color by the segments'''
+        self.hexcolor = self.get_TfColor(self.Tf)
+        # Apply the color
+        self.cadnano_oligo.applyColor(self.hexcolor)
+
     def remove_penalized_solutions(self):
-        '''
-        Remove solutions with non-zero self penalty score
-        '''
+        '''Remove solutions with non-zero self penalty score'''
         self.break_solutions = list(filter(lambda x: x.self_penalty == 0, self.break_solutions))
 
     def keep_best_break_solutions(self):
-        '''
-        Keep best break solutions
-        '''
+        '''Keep best break solutions'''
         # If the solution list is empty return
         if len(self.break_solutions) == 0:
             return
@@ -507,16 +510,12 @@ class Oligo:
         self.break_solutions = list(filter(lambda x: x.score == self.max_score, self.break_solutions))
 
     def reset_temp_neighbor_constraints(self):
-        '''
-        Reset temporary neighbor constraints
-        '''
+        '''Reset temporary neighbor constraints'''
         for current_break in self.breaks:
             current_break.dont_break_temp = False
 
     def reset_break_order_ids(self, start_break, final_break):
-        '''
-        Renumber break ids for shortest path algorithm
-        '''
+        '''Renumber break ids for shortest path algorithm'''
         current_break = start_break
 
         # Break id counter
@@ -548,17 +547,14 @@ class Oligo:
             current_break = current_break.next_break
 
     def generate_shortest_paths(self, num_solutions=1, verbose=False):
-        '''
-        Get the shortest paths for the oligo if only it allowed to break it
-        '''
+        '''Get the shortest paths for the oligo if only it allowed to break it'''
 
         # Get k-select parameter
         k_select = self.origami.autobreak.k_select
 
         # Show oligo being processed - use tdqm
         if verbose:
-            tqdm.write('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)),
-                        file=self.origami.tqdm_output_file)
+            logging.info('Processing oligo:%-15s Number of breaks:%-3d' % (self.key, len(self.breaks)))
 
         if self.dont_break:
             self.break_solutions = []
@@ -575,9 +571,11 @@ class Oligo:
             self.num_solutions_per_oligo = num_solutions
 
         if self.circular:
-            for current_break in tqdm(self.breaks, desc='Shortest path loop ',
-                                      dynamic_ncols=True, bar_format='{l_bar}{bar}',
-                                      file=self.origami.tqdm_output_file):
+            # for current_break in tqdm(self.breaks, desc='Shortest path loop ',
+            #                           dynamic_ncols=True, bar_format='{l_bar}{bar}',
+            #                           file=self.origami.tqdm_output_file):
+
+            for current_break in self.breaks:
 
                 # Check the constraints. If not allowed to break, skip
                 if current_break.dont_break or current_break.dont_break_temp:
@@ -618,25 +616,19 @@ class Oligo:
 
 class Crossover:
     def __init__(self):
-        '''
-        Crossover class
-        '''
+        '''Crossover class'''
         self.neighbor   = None
         self.break_node = None
 
 
 class CrossoverSet:
     def __init__(self):
-        '''
-        Crossover set class
-        '''
+        '''Crossover set class'''
 
 
 class Origami:
     def __init__(self):
-        '''
-        Origami class
-        '''
+        '''Origami class'''
 
         self.json_input     = None
         self.oligos         = {'scaffold': [], 'staple': []}
@@ -667,21 +659,15 @@ class Origami:
         self.std_output_file    = None
 
     def set_std_output_file(self, filename=None):
-        '''
-        Set tqdm output file
-        '''
+        '''Set tqdm output file'''
         self.std_output_file = filename
 
     def set_tqdm_output_file(self, filename=None):
-        '''
-        Set tqdm output file
-        '''
+        '''Set tqdm output file'''
         self.tqdm_output_file = filename
 
     def warn_circular_scaffold(self):
-        '''
-        Warn user about adding a break in a scaffold
-        '''
+        '''Warn user about adding a break in a scaffold'''
         cadnano_oligos = self.part.oligos()
         cadnano_oligos = sorted(cadnano_oligos, key=lambda x: x.length(), reverse=True)
         if cadnano_oligos[0].isCircular():
@@ -689,9 +675,7 @@ class Origami:
                   ' It is recommended to add a break in scaffold before applying autobreak.')
 
     def circularize_scaffold(self):
-        '''
-        Circularize scaffold
-        '''
+        '''Circularize scaffold'''
 
         strand5p = self.scaffolds[0].strand5p()
         strand3p = self.scaffolds[0].strand3p()
@@ -718,21 +702,17 @@ class Origami:
         # Get current start position
         self.current_start_pos = (strand5p.idNum(), strand5p.idx5Prime())
 
-        # Set circularize oligo False so that this function is excuted only once
+        # Set circularize oligo False so that this function is executed only once
         self.circularize = False
 
     def determine_num_crossovers(self):
-        '''
-        Determine total number of crossovers
-        '''
+        '''Determine total number of crossovers'''
         self.num_crossovers = 0
         for oligo in self.oligos['staple']:
             self.num_crossovers += oligo.num_crossovers
 
     def assign_scaffold_positions(self):
-        '''
-        Assign scaffold positions for the strands
-        '''
+        '''Assign scaffold positions for the strands'''
         for oligo in self.oligos['staple']:
 
             # Assign current strand
@@ -759,9 +739,7 @@ class Origami:
                 current_strand = current_strand.next_strand
 
     def set_dont_break_oligos(self, maximum_length=0):
-        '''
-        Set dont break oligos
-        '''
+        '''Set dont break oligos'''
         for oligo in self.oligos['staple']:
             if oligo.length < maximum_length:
                 oligo.dont_break = True
@@ -783,22 +761,16 @@ class Origami:
             self.sequence_offset = sequence_distance % self.scaffolds[0].length()
 
     def set_circularize(self, circularize=False):
-        '''
-        Set circularize (scaffold) parameter
-        '''
+        '''Set circularize (scaffold) parameter'''
         self.circularize = circularize
 
     def set_sequence_start_pos(self, key):
-        '''
-        Set sequence start position in (vh, idx)
-        '''
+        '''Set sequence start position in (vh, idx)'''
         if key != (-1, -1):
             self.sequence_start_pos = key
 
     def set_sequence_start_offset(self, offset=0):
-        '''
-        Set sequence offset
-        '''
+        '''Set sequence offset'''
         if offset >= 0:
             self.sequence_start_offset = offset
         else:
@@ -820,9 +792,7 @@ class Origami:
             return min(next_positions) - min(current_positions)
 
     def get_scaffold_positions(self, vh, idx):
-        '''
-        Get scaffold position
-        '''
+        '''Get scaffold position'''
         # Make the key
         key = (vh, idx)
 
@@ -835,27 +805,21 @@ class Origami:
             return [None]
 
     def get_current_nucleotide(self, key):
-        '''
-        Get nucleotide from nucleotide map
-        '''
+        '''Get nucleotide from nucleotide map'''
         if key in self.nucleotide_map:
             return self.nucleotide_map[key]
         else:
             return None
 
     def get_next_nucleotide(self, key):
-        '''
-        Get next nucleotide
-        '''
+        '''Get next nucleotide'''
         if key in self.nucleotide_map:
             return self.nucleotide_map[key].next_nucleotide
         else:
             return None
 
     def is_dsDNA(self, vh, idx):
-        '''
-        Check if it is dsDNA
-        '''
+        '''Check if it is dsDNA'''
         forward_strand = self.get_cadnano_strand(vh, idx, True)
         reverse_strand = self.get_cadnano_strand(vh, idx, False)
 
@@ -864,45 +828,28 @@ class Origami:
         else:
             return False
 
-    def color_by_Tm(self):
-        '''
-        Color oligos by Tm
-        '''
-
     def set_dont_break_very_long_staples(self, value=False):
-        '''
-        Set break very long staples
-        '''
+        '''Set break very long staples'''
         self.dont_break_very_long_staples = value
 
     def sort_staples_by_length(self):
-        '''
-        Sort oligos by length
-        '''
+        '''Sort oligos by length'''
         self.oligos['staple'].sort(key=lambda x: x.length)
 
     def sort_staples_by_key(self):
-        '''
-        Sort staples by key
-        '''
+        '''Sort staples by key'''
         self.oligos['staple'].sort(key=lambda x: x.key)
 
     def sort_breaks_by_key(self):
-        '''
-        Sort breaks by key
-        '''
+        '''Sort breaks by key'''
         self.breaks.sort(key=lambda x: x.key)
 
     def set_sequence_file(self, sequence_file=None):
-        '''
-        Set sequence filename
-        '''
+        '''Set sequence filename'''
         self.sequence_file = sequence_file
 
     def break_very_long_staples(self):
-        '''
-        Break very long oligos
-        '''
+        '''Break very long oligos'''
         if self.dont_break_very_long_staples:
             return
 
@@ -911,15 +858,11 @@ class Origami:
                 oligo.break_in_half()
 
     def is_there_very_long_staples(self):
-        '''
-        Returns whether there are any very long staples
-        '''
+        '''Returns whether there are any very long staples'''
         return self.very_long_staples_exist
 
     def check_very_long_staples(self):
-        '''
-        Check if there is any long staples
-        '''
+        '''Check if there is any long staples'''
         self.very_long_staples_exist = False
         for oligo in self.oligos['staple']:
             if len(oligo.breaks) > self.autobreak.max_num_breaks:
@@ -927,9 +870,7 @@ class Origami:
                 break
 
     def prepare_origami(self):
-        '''
-        List of commands to prepare origami for break
-        '''
+        '''List of commands to prepare origami for break'''
         # Get oligos
         self.get_oligos()
 
@@ -1012,21 +953,15 @@ class Origami:
         self.apply_cross_rule()
 
     def set_cadnano_sequence_offset(self):
-        '''
-        Set cadnano sequenceOffset
-        '''
+        '''Set cadnano sequenceOffset'''
         self.part.setSequenceOffset(self.corrected_offset)
 
     def get_cadnano_strand(self, vh, idx, direction):
-        '''
-        Get cadnano strand from vh, idx, direction information
-        '''
+        '''Get cadnano strand from vh, idx, direction information'''
         return self.part.getStrand(direction > 0, vh, idx)
 
     def split_cadnano_strand(self, vh, idx, direction):
-        '''
-        Split cadnano strand at vh, idx, direction
-        '''
+        '''Split cadnano strand at vh, idx, direction'''
         new_strand = self.part.getStrand(direction > 0, vh, idx)
 
         # Break only if it is a valid strand
@@ -1034,13 +969,12 @@ class Origami:
             new_strand.split(idx)
 
     def remove_cadnano_crossover(self, vh, idx, direction):
-        '''
-        Remove cadnano crossover
-        '''
+        '''Remove cadnano crossover'''
         strand5p = self.part.getStrand(direction > 0, vh, idx)
         strand3p = strand5p.connection3p()
-
-        self.part.removeXover(strand5p, strand3p)
+        # print(vh, idx, direction, strand5p, strand3p)
+        if strand5p is not None and strand3p is not None:
+            self.part.removeXover(strand5p, strand3p)
 
     def initialize(self, input_filename):
         # Initialize cadnano
@@ -1057,9 +991,7 @@ class Origami:
         self.part = self.doc.activePart()
 
     def split_scaffold(self):
-        '''
-        Split scaffold at the starting position - (direction)
-        '''
+        '''Split scaffold at the starting position - (direction)'''
 
         (vh, idx) = self.sequence_start_pos
 
@@ -1073,9 +1005,7 @@ class Origami:
         self.split_cadnano_strand(vh, idx-direction, direction)
 
     def assign_strands_dna(self):
-        '''
-        Assign strand sequences from cadnano part
-        '''
+        '''Assign strand sequences from cadnano part'''
         for oligo in self.oligos['staple']:
 
             # Assign current strand
@@ -1095,9 +1025,7 @@ class Origami:
                 current_strand = current_strand.next_strand
 
     def read_oligo(self, oligo, oligo_type='staple'):
-        '''
-        Read oligo from 5' to 3'
-        '''
+        '''Read oligo from 5' to 3' '''
         # Oligo strand generator
         generator    = oligo.strand5p().generator3pStrand()
 
@@ -1174,9 +1102,7 @@ class Origami:
             previous_strand.final_strand = True
 
     def generate_staple_crossovers(self):
-        '''
-        Generate staple crossover objects
-        '''
+        '''Generate staple crossover objects'''
 
         # Initialize the crossovers for the origami
         self.crossovers = {}
@@ -1218,9 +1144,7 @@ class Origami:
                 current_strand          = current_strand.next_strand
 
     def generate_scaffold_crossovers(self):
-        '''
-        Generate scaffold crossovers
-        '''
+        '''Generate scaffold crossovers'''
         # Read scaffold crossovers
         for oligo in self.oligos['scaffold']:
             # Initialize crossovers for the oligo
@@ -1258,9 +1182,7 @@ class Origami:
                 current_strand          = current_strand.next_strand
 
     def link_crossovers(self):
-        '''
-        Link crossovers
-        '''
+        '''Link crossovers'''
         # Check crossover neighbors
         for key in self.crossovers:
 
@@ -1272,9 +1194,7 @@ class Origami:
                 self.crossovers[key].neighbor = self.crossovers[neighbor_key]
 
     def generate_dsDNA_sequences(self):
-        '''
-        Generate sequences from strands
-        '''
+        '''Generate sequences from strands'''
 
         for oligo in self.oligos['staple']:
             # Initialize sequence list for the oligo
@@ -1355,9 +1275,7 @@ class Origami:
                 current_strand = current_strand.next_strand
 
     def generate_ssDNA_sequences(self):
-        '''
-        Genereate ssDNA sequences for oligo
-        '''
+        '''Genereate ssDNA sequences for oligo'''
         for oligo in self.oligos['staple']:
 
             # Initialize sequence list for the oligo
@@ -1505,9 +1423,7 @@ class Origami:
                 current_strand = current_strand.next_strand
 
     def connect_sequences(self):
-        '''
-        Make the connection between strand sequences
-        '''
+        '''Make the connection between strand sequences'''
         for oligo in self.oligos['staple']:
 
             oligo.num_crossovers = 0
@@ -1546,9 +1462,7 @@ class Origami:
                 oligo.num_crossovers += 1
 
     def update_sequences_dna(self):
-        '''
-        Update the sequences dna
-        '''
+        '''Update the sequences dna'''
         for oligo in self.oligos['staple']:
 
             # Iterate over the sequences
@@ -1556,9 +1470,7 @@ class Origami:
                 current_sequence.dna = current_sequence.strand.dna[current_sequence.strLow:current_sequence.strHigh+1]
 
     def apply_break_rules(self):
-        '''
-        Apply break rules
-        '''
+        '''Apply break rules'''
         for oligo in self.oligos['staple']:
             # Assign current strand
             current_strand = oligo.null_strand.next_strand
@@ -1571,9 +1483,7 @@ class Origami:
                 current_strand   = current_strand.next_strand
 
     def apply_cross_rule(self):
-        '''
-        Apply cross rule
-        '''
+        '''Apply cross rule'''
         # If xscaf is not in the rule list disable scaffold crossover break points
         if 'xscaf' not in self.break_rule:
             self.disable_scaffold_crossovers()
@@ -1583,15 +1493,11 @@ class Origami:
             self.disable_staple_crossovers()
 
     def determine_longrange_breaks(self):
-        '''
-        Determine long range contacts
-        '''
+        '''Determine long range contacts'''
         self.long_range_breaks = []
 
     def build_nucleotide_map(self):
-        '''
-        Make nucleotide map
-        '''
+        '''Make nucleotide map'''
         # Initialize nucleotide map
         self.nucleotide_map = {}
 
@@ -1632,9 +1538,7 @@ class Origami:
                 current_strand = current_strand.next_strand
 
     def generate_break_points(self):
-        '''
-        Generate break points
-        '''
+        '''Generate break points'''
 
         # Initialize breaks
         self.breaks = []
@@ -1788,9 +1692,7 @@ class Origami:
             self.breaks += oligo.breaks
 
     def disable_staple_crossovers(self):
-        '''
-        Disable all crossover break nodes
-        '''
+        '''Disable all crossover break nodes'''
         for key in self.crossovers:
             if self.crossovers[key].break_node is None or self.crossovers[key].type == 'scaffold':
                 continue
@@ -1800,9 +1702,7 @@ class Origami:
                 self.crossovers[key].break_node.dont_break = False
 
     def disable_scaffold_crossovers(self):
-        '''
-        Disable all crossover break nodes
-        '''
+        '''Disable all crossover break nodes'''
         for key in self.crossovers:
             if self.crossovers[key].break_node is None or self.crossovers[key].type == 'staple':
                 continue
@@ -1812,9 +1712,7 @@ class Origami:
                 self.crossovers[key].break_node.dont_break = False
 
     def connect_break_points(self):
-        '''
-        Connect break points
-        '''
+        '''Connect break points'''
         for oligo in self.oligos['staple']:
 
             # Visit each break object
@@ -1841,9 +1739,7 @@ class Origami:
                     current_break.type = 'break'
 
     def cluster_oligo_groups(self):
-        '''
-        Cluster oligos based on break connectivity
-        '''
+        '''Cluster oligos based on break connectivity'''
         # Initialize oligo groups
         self.oligo_groups = []
 
@@ -1893,44 +1789,32 @@ class Origami:
                 self.oligo_groups.append(new_oligo_group)
 
     def read_staple(self, staple):
-        '''
-        Read staple from 5' to 3'
-        '''
+        '''Read staple from 5' to 3' '''
         self.read_oligo(staple, oligo_type='staple')
 
     def read_staples(self):
-        '''
-        Read oligos
-        '''
+        '''Read oligos'''
         for staple in self.staples:
             self.read_staple(staple)
 
     def read_scaffolds(self):
-        '''
-        Read the scaffolds
-        '''
+        '''Read the scaffolds'''
         # Initialize idnums list
         self.idnums = []
         for scaffold in self.scaffolds:
             self.read_scaffold(scaffold)
 
     def reset_oligos(self):
-        '''
-        Reset oligos list
-        '''
+        '''Reset oligos list'''
         self.oligos    = {'scaffold': [], 'staple': []}
         self.oligo_map = {}
 
     def read_scaffold(self, scaffold):
-        '''
-        Read scaffold
-        '''
+        '''Read scaffold'''
         self.read_oligo(scaffold, oligo_type='scaffold')
 
     def build_scaffold_map(self):
-        '''
-        Build scaffold map
-        '''
+        '''Build scaffold map'''
         # Initialize scaffold maps
         self.scaffold2key = {}
         self.key2scaffold = {}
@@ -1969,9 +1853,7 @@ class Origami:
             current_strand = current_strand.next_strand
 
     def get_oligos(self):
-        '''
-        Get oligos
-        '''
+        '''Get oligos'''
         self.cadnano_oligos = self.part.oligos()
 
         # In place sort based on vh and idx5p and oligo direction
@@ -1998,17 +1880,15 @@ class Origami:
                 self.staples.append(oligo)
 
     def read_sequence(self):
-        '''
-        Read sequence file
-        '''
+        '''Read sequence file'''
 
         # 1. Check the popular scaffolds list
         # 2. Check if the file exists
         # 3. Generate random sequence
 
-        if self.sequence_file in utilities.SCAFFOLD_SEQUENCES:
-            print("Sequence code %s exists." % (self.sequence_file))
-            self.scaffold_sequence = utilities.SCAFFOLD_SEQUENCES[self.sequence_file]
+        if self.sequence_file in scaffolds.SCAFFOLD_SEQUENCES:
+            print("Recognized known scaffold %s." % (self.sequence_file))
+            self.scaffold_sequence = scaffolds.SCAFFOLD_SEQUENCES[self.sequence_file]
 
         elif self.sequence_file and os.path.isfile(self.sequence_file):
             # Read sequence from file
@@ -2029,18 +1909,16 @@ class Origami:
             # Make sequence allA
             self.scaffold_sequence = utilities.generate_nA(self.scaffolds[0].length())
         elif self.sequence_file == 'allC':
-            # Make sequence allT
+            # Make sequence allC
             self.scaffold_sequence = utilities.generate_nC(self.scaffolds[0].length())
         elif self.sequence_file == 'allG':
-            # Make sequence allA
+            # Make sequence allG
             self.scaffold_sequence = utilities.generate_nG(self.scaffolds[0].length())
         elif len(self.scaffolds) > 0:
             self.scaffold_sequence = utilities.generate_random_sequence(self.scaffolds[0].length())
 
     def apply_sequence(self, offset=0):
-        '''
-        Apply sequence to scaffold
-        '''
+        '''Apply sequence to scaffold'''
         self.sequence_offset = offset
         if len(self.scaffolds) > 0:
             self.scaffolds[0].applySequence(self.scaffold_sequence[offset:] +
