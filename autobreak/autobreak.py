@@ -846,8 +846,8 @@ class AutoBreak:
         cb = fig.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap), 
                           cax=cax, orientation='vertical', extend='both')
         cax.set_yticks([])
-        cax.text(-.5,  10, 'Less Folded', ha='right', va='top', rotation='vertical')
-        cax.text(-.5, -10, 'More Folded', ha='right', va='bottom', rotation='vertical') 
+        cax.text(-.5,  10, 'Less Folded', ha='right', va='bottom', rotation='vertical') 
+        cax.text(-.5, -10, 'More Folded', ha='right', va='top', rotation='vertical')
 
         # Third subplot: ∆Gloop vs ∆Ghyb scatter plot
         ax3.plot([-10,60], [10,-60], linewidth=1, linestyle=(0, (5, 5)), color='#c00')
