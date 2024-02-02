@@ -838,7 +838,7 @@ class AutoBreak:
 
         # Second subplot: Colorbar with labels
         norm = mpl.colors.Normalize(vmin=-20, vmax=20)
-        cmap = mpl.cm.coolwarm_r
+        cmap = mpl.cm.coolwarm
         # Add a set of axes with the position and size [left, bottom, width, height]
         # cax = fig.add_axes([.28, .21, 0.02, .565])
         cax = fig.add_axes([.35, .3, 0.02, .4])
