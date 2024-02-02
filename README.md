@@ -2,14 +2,15 @@
 
 ## How to use
 
-To use this tool, we recommend using this [Colab notebook](https://colab.research.google.com/?utm_source=scs-index#)
+To use this tool, we recommend using this [Colab notebook](https://colab.research.google.com/drive/1NbS7lE3wZkecC5-zXZ0KpfDWn_a3YFDE)
 
 ## How to cite
 
 We invite you to support the project by citing these references:
 
 ```
-TBD
+Design principles for accurate folding of DNA origami
+Aksel et al. [TBD] (2024)
 ```
 
 ```
