@@ -818,8 +818,6 @@ class AutoBreak:
         # Draw a horizontal line and triangle markers at the median value
         ax1.axhline(y=median_rel_tf, xmin=0, xmax=2, color='black', linestyle='solid', linewidth=1)
 
-        print(self.input_filename, median_rel_tf)
-
         # Add text label for the median
         sign = '' if median_rel_tf < 0 else '+'
         ax1.text(x=2.1, y=median_rel_tf, s=f'{sign}{median_rel_tf:.1f}°',  # Format to 2 decimal places
