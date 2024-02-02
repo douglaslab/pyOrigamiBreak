@@ -886,19 +886,33 @@ class AutoBreak:
         svg_A = su.compose.SVG(self.results_heatmap_path)
         svg_B = su.compose.SVG(self.results_plots)
 
+        # Choose layout based on heatmap dimensions
+        horizontal_layout = True if wA < 2*hA else False
+
         # Calculate the scale factor for A.svg
-        scale_factor = 0.8*hB/hA
+        if horizontal_layout:
+            # narrow heatmaps scale to 80% plot height
+            scale_factor = 0.8*hB/hA
+        else:
+            # wide heatmaps scale to plot width
+            scale_factor = wB/wA
+
         new_wA = wA * scale_factor
         new_hA = hA * scale_factor
 
         # Scale A according 
         scaled_A = su.compose.Figure(new_wA, new_hA, svg_A.scale(scale_factor))
 
-        # Create a figure with enough width to hold both SVGs side by side
-        fig = su.transform.SVGFigure(wA+wB, hB)
-
-        # Position A.svg on the left, B.svg on the right
-        fig.append([scaled_A.move(0.1*new_wA, 0.11*hB), svg_B.move(new_wA, 0)])
+        if horizontal_layout:
+            # Create wide figure for horizontal layout
+            fig = su.transform.SVGFigure(new_wA+wB, hB)
+            # Position A.svg on the left, B.svg on the right
+            fig.append([scaled_A.move(0.1*new_wA, 0.11*hB), svg_B.move(1.1*new_wA, 0)])
+        else:
+            # Create tall figure for vertical layout
+            fig = su.transform.SVGFigure(new_wA, 1.1*hA+hB)
+            # Position A.svg on the left, B.svg on the right
+            fig.append([scaled_A.move(0,0), svg_B.move(0, 1.1*new_hA)])
 
         # Save the final composite SVG
         fig.save(self.results_report)

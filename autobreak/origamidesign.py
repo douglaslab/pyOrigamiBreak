@@ -94,7 +94,7 @@ class OligoGroup:
         mb = master_bar(range(num_global_solutions))
 
         oligo_count = len(self.oligos)
-        mb.write(f'Processing {oligo_count} oligos per design.')
+        mb.write(f'Processing {oligo_count} oligos per solution.')
 
         for i in mb:
             # Reset temporary neighbor constraints
