@@ -11,9 +11,10 @@ We invite you to support the project by citing these references:
 
 ```
 Design principles for accurate folding of DNA origami
-Aksel et al. [TBD] (2024)
+Aksel et al. (2024)
+https://doi.org/10.1101/2024.03.18.585609 
 ```
-Upon publication, the complete citation details will be provided here. Please check back for updates or contact the authors for the most current information.
+Upon journal publication, the complete citation details will be provided here. Please check back for updates or contact the authors for the most current information.
 
 ```
 Rapid prototyping of 3D DNA-origami shapes with caDNAno
