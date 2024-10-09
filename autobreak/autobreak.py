@@ -518,7 +518,7 @@ class AutoBreak:
         self.best_sequence_offset           = 0
 
         # Permutation parameter
-        self.permute_sequence               = False
+        self.permute_sequence               = 0
 
         # Excel file that stores the results
         self.results_excel_file             = None
@@ -853,7 +853,13 @@ class AutoBreak:
         ax3.plot([-10,60], [10,-60], linewidth=1, linestyle=(0, (5, 5)), color='#c00')
         # ax3.tick_params(axis='x', labelcolor='#0066CC')
         # ax3.tick_params(axis='y', labelcolor='#57BB00')
+
         ax3.scatter(df['dGloop'], df['dGhyb'], c=df['TfColor'], linewidth=0.2, edgecolor='#666', s=30)
+
+        median_dGloop = df['dGloop'].median()
+        median_dGhyb = df['dGhyb'].median()
+        ax3.scatter(median_dGloop, median_dGhyb, color='black', s=100, marker='*', label='Median')
+
         ax3.annotate('∆G$_{loop}$+∆G$_{hyb}$=0', 
                      xy=(0, 0),  # Point to which the arrow points
                      xytext=(8, 4),  # Location of the text
@@ -869,6 +875,7 @@ class AutoBreak:
         # Save the entire figure
         # plt.savefig(f"{file_name}.svg")
         plt.savefig(self.results_plots)
+        plt.savefig(self.results_plots_png)
 
 
     def create_summary_figure(self):
@@ -916,6 +923,7 @@ class AutoBreak:
 
         # Save the final composite SVG
         fig.save(self.results_report)
+        fig.save(self.results_report_png)
 
     def first_run_message(self):
         message = '''
@@ -985,9 +993,12 @@ Autobreak generates the following directory structure.
         self.json_legacy_output    = os.path.join(outdir, 'outputs', name+'_autobreak.json')
         self.results_excel_file    = os.path.join(outdir, 'outputs', name+'_results.xlsx')
         self.results_heatmap_dir   = os.path.join(outdir, 'intermediates')
+
         self.results_heatmap_path  = os.path.join(outdir, 'intermediates', name+'_autobreak_path.svg')
         self.results_heatmap_ortho = os.path.join(outdir, 'intermediates', name+'_autobreak_ortho.svg')
         self.results_plots         = os.path.join(outdir, 'intermediates', name+'_plots.svg')
+        self.results_plots_png     = os.path.join(outdir, 'intermediates', name+'_plots.png')
+
         self.results_report        = os.path.join(outdir, 'outputs', name+'_report.svg')
 
         # Optional CSV output paths, enabled with `-csv` flag
@@ -2350,11 +2361,11 @@ class DefaultArgs(argparse.Namespace):
     maxlength = 60     # Maximum staple length", default=60)
     dontbreak = 0      # Dont break oligos less than the length specified", default=0)
     verbose   = 1      # Verbosity level (0, 1, 2)
-    npermute  = 0      # Number of permutation iterations
+    permute   = 0      # Number of nucleotides to permute the scaffold sequence
     seed      = 0      # Random seed
+    # npermute  = 0      # Number of permutation iterations (unused)
     readonly  = False  # Read-only to determine oligo scores
     sort      = False  # Sort oligos for stepwise optimization.
-    permute   = False  # Permute sequence
     writeall  = False  # Write all results
     csv       = False  # Export results in csv format
 
@@ -2371,11 +2382,11 @@ def parse_args_from_shell():
     parser.add_argument("-maxlength", "--maxlength", type=int, help="Maximum staple length", default=60)
     parser.add_argument("-dontb",     "--dontbreak", type=int, help="Dont break oligos less than the length specified", default=0)
     parser.add_argument("-verbose",   "--verbose",   type=int, choices=[0, 1, 2], help="Verbose output", default=1)
-    parser.add_argument("-npermute",  "--npermute",  type=int, help="Number of permutation iterations", default=0)
+    parser.add_argument("-permute",   "--permute",   type=int, help="Number of nucleotides to permute the scaffold", default=0)
+    # parser.add_argument("-npermute",  "--npermute",  type=int, help="Number of permutation iterations", default=0)
     parser.add_argument("-seed",      "--seed",      type=int, default=0, help="Random seed")
     parser.add_argument("-readonly",  "--readonly",  action='store_true', help="Read-only to determine oligo scores")
     parser.add_argument("-sort",      "--sort",      action='store_true', help="Sort oligos for stepwise optimization.")
-    parser.add_argument("-permute",   "--permute",   action='store_true', help="Permute sequence")
     parser.add_argument("-writeall",  "--writeall",  action='store_true', help="Write all results")
     parser.add_argument("-csv",       "--csv",       action='store_true', help="Export results in csv format")
     args = parser.parse_args()
@@ -2411,7 +2422,7 @@ def run(is_notebook_session, args=None):
     permute_sequence        = args.permute
     write_all_results       = args.writeall
     shuffle_oligos          = not args.sort
-    npermute                = args.npermute
+    # npermute                = args.npermute
 
     # Create args dictionary
     args_dict = {'input': args.input,
@@ -2428,7 +2439,7 @@ def run(is_notebook_session, args=None):
                  'verbose': args.verbose,
                  'seed': args.seed,
                  'permute': args.permute,
-                 'npermute': args.npermute,
+                 # 'npermute': args.npermute,
                  'writeall': args.writeall,
                  'csv': args.csv,
                  'sort': args.sort}
@@ -2517,7 +2528,7 @@ def run(is_notebook_session, args=None):
         new_origami.prepare_origami()
 
         # Run the permutation protocol
-        new_autobreak.permute_scaffold_sequence_readonly(npermute)
+        # new_autobreak.permute_scaffold_sequence_readonly(npermute)
 
         # Correct sequence offsets
         new_autobreak.correct_complete_solution_offsets()
@@ -2548,7 +2559,7 @@ def run(is_notebook_session, args=None):
         new_autobreak.create_results_excel_file()
 
         # Run the permutation protocol
-        new_autobreak.permute_scaffold_sequence_autobreak(npermute)
+        # new_autobreak.permute_scaffold_sequence_autobreak(npermute)
 
         # Correct sequence offsets
         new_autobreak.correct_complete_solution_offsets()
