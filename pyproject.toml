@@ -1,6 +1,6 @@
 [project]
 name = "pyOrigamiBreak"
-version = "1.0.0"
+version = "1.0.1"
 authors = [
   {name = "Tural Aksel", email = "turalaksel@gmail.com"},
   {name = "Shawn Douglas", email = "shawn.douglas@ucsf.edu"},
@@ -21,7 +21,7 @@ dependencies = [
   'numpy',
   'pandas',
   'openpyxl',
-  'matplotlib',
+  'matplotlib == 3.8.1',
   'svgutils',
   'fastprogress',
   'cadnano @ git+https://github.com/douglaslab/cadnano2.5.git',
