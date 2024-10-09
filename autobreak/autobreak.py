@@ -923,7 +923,7 @@ class AutoBreak:
 
         # Save the final composite SVG
         fig.save(self.results_report)
-        fig.save(self.results_report_png)
+
 
     def first_run_message(self):
         message = '''
@@ -987,7 +987,7 @@ Autobreak generates the following directory structure.
 
             def flush(self):
                 pass  # Needed for compatibility with the file-like interface
-        sys.stderr = StdErrLogger()
+        # sys.stderr = StdErrLogger()
 
         # Output file paths
         self.json_legacy_output    = os.path.join(outdir, 'outputs', name+'_autobreak.json')
@@ -2361,11 +2361,11 @@ class DefaultArgs(argparse.Namespace):
     maxlength = 60     # Maximum staple length", default=60)
     dontbreak = 0      # Dont break oligos less than the length specified", default=0)
     verbose   = 1      # Verbosity level (0, 1, 2)
-    permute   = 0      # Number of nucleotides to permute the scaffold sequence
     seed      = 0      # Random seed
-    # npermute  = 0      # Number of permutation iterations (unused)
+    npermute  = 0      # Number of permutation iterations (unused)
     readonly  = False  # Read-only to determine oligo scores
     sort      = False  # Sort oligos for stepwise optimization.
+    permute   = False  # Permute sequence
     writeall  = False  # Write all results
     csv       = False  # Export results in csv format
 
@@ -2382,9 +2382,9 @@ def parse_args_from_shell():
     parser.add_argument("-maxlength", "--maxlength", type=int, help="Maximum staple length", default=60)
     parser.add_argument("-dontb",     "--dontbreak", type=int, help="Dont break oligos less than the length specified", default=0)
     parser.add_argument("-verbose",   "--verbose",   type=int, choices=[0, 1, 2], help="Verbose output", default=1)
-    parser.add_argument("-permute",   "--permute",   type=int, help="Number of nucleotides to permute the scaffold", default=0)
-    # parser.add_argument("-npermute",  "--npermute",  type=int, help="Number of permutation iterations", default=0)
+    parser.add_argument("-npermute",  "--npermute",  type=int, help="Number of permutation iterations", default=0)
     parser.add_argument("-seed",      "--seed",      type=int, default=0, help="Random seed")
+    parser.add_argument("-permute",   "--permute",   action='store_true', help="Permute sequence")
     parser.add_argument("-readonly",  "--readonly",  action='store_true', help="Read-only to determine oligo scores")
     parser.add_argument("-sort",      "--sort",      action='store_true', help="Sort oligos for stepwise optimization.")
     parser.add_argument("-writeall",  "--writeall",  action='store_true', help="Write all results")
@@ -2422,7 +2422,7 @@ def run(is_notebook_session, args=None):
     permute_sequence        = args.permute
     write_all_results       = args.writeall
     shuffle_oligos          = not args.sort
-    # npermute                = args.npermute
+    npermute                = args.npermute
 
     # Create args dictionary
     args_dict = {'input': args.input,
@@ -2439,7 +2439,6 @@ def run(is_notebook_session, args=None):
                  'verbose': args.verbose,
                  'seed': args.seed,
                  'permute': args.permute,
-                 # 'npermute': args.npermute,
                  'writeall': args.writeall,
                  'csv': args.csv,
                  'sort': args.sort}
@@ -2527,8 +2526,11 @@ def run(is_notebook_session, args=None):
         # Prepare origami
         new_origami.prepare_origami()
 
+        # Confirm scaffold input length matches design
+        new_origami.validate()
+
         # Run the permutation protocol
-        # new_autobreak.permute_scaffold_sequence_readonly(npermute)
+        new_autobreak.permute_scaffold_sequence_readonly(npermute)
 
         # Correct sequence offsets
         new_autobreak.correct_complete_solution_offsets()
@@ -2546,6 +2548,9 @@ def run(is_notebook_session, args=None):
         # Prepare origami for autobreak
         new_origami.prepare_origami()
 
+        # Confirm scaffold input length matches design
+        new_origami.validate()
+
         # Cluster staples
         new_origami.cluster_oligo_groups()
 
@@ -2559,7 +2564,7 @@ def run(is_notebook_session, args=None):
         new_autobreak.create_results_excel_file()
 
         # Run the permutation protocol
-        # new_autobreak.permute_scaffold_sequence_autobreak(npermute)
+        new_autobreak.permute_scaffold_sequence_autobreak(npermute)
 
         # Correct sequence offsets
         new_autobreak.correct_complete_solution_offsets()

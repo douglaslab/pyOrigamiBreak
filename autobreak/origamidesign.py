@@ -11,6 +11,7 @@ import cadnano
 from cadnano.document import Document
 
 from autobreak import autobreak, scaffolds, utilities
+from autobreak.validate import Validator
 
 class Sequence:
     def __init__(self):
@@ -951,6 +952,11 @@ class Origami:
 
         # Apply crossover rule
         self.apply_cross_rule()
+
+    def validate(self):
+        '''Check the relative lengths of the design scaffold and the input scaffold'''
+        validator = Validator(self.part, self.scaffold_sequence, self.autobreak.UPPER_BOUND)
+        validator.analyze()
 
     def set_cadnano_sequence_offset(self):
         '''Set cadnano sequenceOffset'''

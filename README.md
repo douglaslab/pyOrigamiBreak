@@ -22,6 +22,11 @@ Douglas et al. Nucleic Acids Res: 37(15):5001–6 (2009)
 https://doi.org/10.1093/nar/gkp436
 ```
 
+## Where to download Cadnano designs
+
+- Published Douglas Lab designs are available at https://github.com/douglaslab/cadnano-designs
+- Additional source files may be available at https://nanobase.org/
+
 ## How to get help
 
 - Before contacting us, please read the manuscript, this README, and all documentation in the Colab notebook.
