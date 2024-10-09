@@ -17,6 +17,12 @@
 
 4. Examine the ligated version of the file with Cadnano, make any necessary changes, and then run autobreak.
 
+# Usage notes
+
+- We've only performed limited testing with this tool. 
+- Autobreak will sometimes fail to find any break solutions for a ligated design.
+  Commenting out the code block that merges crossovers may help (lines 94-102).
+
 """
 import sys
 import cadnano
