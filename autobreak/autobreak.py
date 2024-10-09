@@ -858,7 +858,7 @@ class AutoBreak:
 
         median_dGloop = df['dGloop'].median()
         median_dGhyb = df['dGhyb'].median()
-        ax3.scatter(median_dGloop, median_dGhyb, color='black', s=100, marker='*', label='Median')
+        ax3.scatter(median_dGloop, median_dGhyb, color='black', s=100, marker='D', label='Median')
 
         ax3.annotate('∆G$_{loop}$+∆G$_{hyb}$=0', 
                      xy=(0, 0),  # Point to which the arrow points
