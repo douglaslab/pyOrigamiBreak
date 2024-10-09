@@ -2553,6 +2553,9 @@ def run(is_notebook_session, args=None):
         # Confirm scaffold input length matches design
         new_origami.validate()
 
+        if is_notebook_session:
+            print("Please be patient... This next step may take 5 minutes or longer to refresh during peak Colab demand.")
+
         # Cluster staples
         new_origami.cluster_oligo_groups()
 
