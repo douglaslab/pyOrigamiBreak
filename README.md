@@ -2,7 +2,7 @@
 
 ## How to use
 
-For an easy and interactive way to use Autobreak with your Cadnano designs, access the following [Colab notebook](https://colab.research.google.com/drive/1oavYcHN08N5lSMS1i5dtf-f3-j8dEe0-?usp=sharing). It provides a step-by-step guide to integrate Autobreak into your workflow.
+For an easy and interactive way to use Autobreak with your Cadnano designs, access the following [Colab notebook](https://colab.research.google.com/drive/1wRAO8LdY5XCeuZfsmvdUHlJWMBQmQBVa). It provides a step-by-step guide to integrate Autobreak into your workflow.
 
 
 ## How to cite
