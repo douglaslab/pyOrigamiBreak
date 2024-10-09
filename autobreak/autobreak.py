@@ -13,6 +13,8 @@ import pandas as pd
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+
 import svgutils as su
 
 from cn2svg import cn2svg
@@ -855,16 +857,16 @@ class AutoBreak:
         # ax3.tick_params(axis='y', labelcolor='#57BB00')
 
         ax3.scatter(df['dGloop'], df['dGhyb'], c=df['TfColor'], linewidth=0.2, edgecolor='#666', s=30)
+        custom_line = Line2D([0], [0], color='#c00', lw=1, linestyle=(0, (5, 5)))
 
         median_dGloop = df['dGloop'].median()
         median_dGhyb = df['dGhyb'].median()
-        ax3.scatter(median_dGloop, median_dGhyb, color='black', s=100, marker='D', label='Median')
 
-        ax3.annotate('∆G$_{loop}$+∆G$_{hyb}$=0', 
-                     xy=(0, 0),  # Point to which the arrow points
-                     xytext=(8, 4),  # Location of the text
-                     bbox=dict(boxstyle="round", fc="0.8"),
-                     arrowprops=dict(facecolor='#c00', shrink=0.05, width=2, headwidth=6))  # Arrow properties
+        median_plot = ax3.scatter(median_dGloop, median_dGhyb, color='black', s=20, marker='D', label='Median')
+        ax3_legend_elements = [custom_line, median_plot]  # Combine legend entries
+        ax3_legend_labels = [ '∆G$_{loop}$+∆G$_{hyb}$=0', 'Median' ]  # Create labels for each legend entry
+        ax3.legend(ax3_legend_elements, ax3_legend_labels, loc='best', frameon=True, framealpha=0.8, edgecolor='black')
+
         ax3.set_xlabel('∆G$_{loop}$') #, color='#0066CC')
         ax3.set_ylabel('∆G$_{hyb}$') #, color='#57BB00')
         ax3.set_xlim(-10, 60)  # 'dGloop'
