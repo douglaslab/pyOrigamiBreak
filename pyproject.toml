@@ -21,7 +21,7 @@ dependencies = [
   'numpy',
   'pandas',
   'openpyxl',
-  'matplotlib == 3.8.1',
+  'matplotlib',
   'svgutils',
   'fastprogress',
   'cadnano @ git+https://github.com/douglaslab/cadnano2.5.git',
