@@ -20,7 +20,7 @@ import numpy as np
 import yaml
 import re
 
-from autobreak import utilities
+from autobreak import scaffolds
 
 
 # GLOBALS
@@ -275,10 +275,10 @@ class Project:
         # Initialize scaffold sequence
         self.scaffold_sequence = ''
 
-        if sequence_file in utilities.SCAFFOLD_SEQUENCES:
-            self.scaffold_sequence = utilities.SCAFFOLD_SEQUENCES[sequence_file]
+        if sequence_file in scaffolds.SCAFFOLD_SEQUENCES:
+            self.scaffold_sequence = scaffolds.SCAFFOLD_SEQUENCES[sequence_file]
 
-        elif os.path.isfile(sequence_file):
+        elif sequence_file is not None and os.path.isfile(sequence_file):
             # Read sequence from file
             f = open(sequence_file)
             self.scaffold_sequence = ''.join([line.strip() for line in f.readlines()])
@@ -1677,7 +1677,7 @@ def main():
                         help="Output directory", default=None)
 
     parser.add_argument("-seq",   "--sequence", type=str,
-                        help="Scaffold sequence file")
+                        help="Scaffold sequence file", default=None)
 
     parser.add_argument("-header", "--header", type=str, default='',
                         help="Plate header")
@@ -1784,8 +1784,8 @@ def main():
     # Define output file
     xlsx_output_96well                  = new_project.output_directory+'/oligos_96well.xlsx'
     xlsx_output_384well                 = new_project.output_directory+'/oligos_384well.xlsx'
-    echo_output_384well_6res_to_96well  = new_project.output_directory+'/echo_384well_6res_to_69well.csv'
-    echo_output_384well_384PP_to_96well = new_project.output_directory+'/echo_384well_384PP_to_69well.csv'
+    echo_output_384well_6res_to_96well  = new_project.output_directory+'/echo_384well_6res_to_96well.csv'
+    echo_output_384well_384PP_to_96well = new_project.output_directory+'/echo_384well_384PP_to_96well.csv'
     config_file                         = new_project.output_directory+'/args.yaml'
 
     # Write config file
