@@ -20,6 +20,7 @@ classifiers = [
 dependencies = [
   'numpy',
   'pandas',
+  'pyyaml',
   'openpyxl',
   'matplotlib',
   'svgutils',
@@ -36,6 +37,7 @@ dependencies = [
 # The following provides a command-line executable called `autobreak`
 # which executes the function `main` from this package when invoked.
 autobreak = "autobreak:autobreak.main"
+exportoligos = "autobreak:exportoligos.main"
 
 [build-system]
 requires = ["setuptools>=43.0.0", "wheel"]

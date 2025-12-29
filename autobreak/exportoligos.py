@@ -14,12 +14,13 @@ import sys
 import cadnano
 import argparse
 import glob
-import utilities
 import openpyxl
 import collections
 import numpy as np
 import yaml
 import re
+
+from autobreak import utilities
 
 
 # GLOBALS
@@ -579,8 +580,8 @@ class Project:
                 # Get bitlist
                 new_oligo.bitlist              = [int(x) for x in new_oligo.bitseq]
 
-                match_start  = re.match("(\d+)\[(\d+)\]",new_oligo.startkey)
-                match_finish = re.match("(\d+)\[(\d+)\]",new_oligo.finishkey)
+                match_start  = re.match(r"(\d+)\[(\d+)\]",new_oligo.startkey)
+                match_finish = re.match(r"(\d+)\[(\d+)\]",new_oligo.finishkey)
 
                 new_oligo.vh5p, new_oligo.idx5p = [int(x) for x in match_start.groups()]
                 new_oligo.vh3p, new_oligo.idx3p = [int(x) for x in match_finish.groups()]
