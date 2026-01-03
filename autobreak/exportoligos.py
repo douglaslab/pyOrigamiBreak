@@ -203,7 +203,7 @@ class Project:
         for key in self.oligos_dict:
             self.oligos_dict[key].bitseq   = ''.join([str(x) for x in self.oligos_dict[key].bitlist])
 
-    def prepare_oligos_list(self):
+    def prepare_oligos_list(self, sort_key=None):
         '''
         Prepare oligos list
         '''
@@ -216,7 +216,17 @@ class Project:
         # 4. Sort staples based on length
         self.oligos_list.sort(key=lambda x: (x.length, x.vh5p, x.idx5p, x.vh3p, x.idx3p, x.sequence))
 
-        # 5. Sort staples based on the sort key
+        # 5.Sort staples based on a user entered sort key
+        if sort_key == '3pFwd':
+            self.oligos_list.sort(key=lambda x: (x.vh3p, x.idx3p, x.sequence))
+        elif sort_key == '3pRev':
+            self.oligos_list.sort(key=lambda x: (x.idx3p, x.vh3p, x.sequence))
+        elif sort_key == '5pFwd':
+            self.oligos_list.sort(key=lambda x: (x.vh5p, x.idx5p, x.sequence))
+        elif sort_key == '5pRev':
+            self.oligos_list.sort(key=lambda x: (x.idx5p, x.vh5p, x.sequence))
+        
+        # 6. Sort staples based on the sort key
         self.oligos_list.sort(key=lambda x: x.sortkey, reverse=True)
 
     def count_colors(self):
@@ -1679,6 +1689,9 @@ def main():
     parser.add_argument("-seq",   "--sequence", type=str,
                         help="Scaffold sequence file", default=None)
 
+    parser.add_argument("-sortkey", "--sortkey", type=str, default='3pRev',
+                        help="Sort key (3pFwd, 3pRev, 5pFwd, 5pRev)")
+
     parser.add_argument("-header", "--header", type=str, default='',
                         help="Plate header")
 
@@ -1746,6 +1759,7 @@ def main():
                  'welding':           args.welding,
                  'vol96':             args.vol96,
                  'oligoconc':         args.conc,
+                 'sortkey':           args.sortkey,
                  'ECHOnreps':         args.ECHOnreps,
                  'ECHOspace':         args.ECHOspace,
                  'ECHOreservoirtype': args.ECHOreservoirtype,
@@ -1855,7 +1869,7 @@ def main():
     new_project.assign_color_counters()
     new_project.assign_bitseqs()
     new_project.assign_sortkeys()
-    new_project.prepare_oligos_list()
+    new_project.prepare_oligos_list(sort_key=args_dict['sortkey'])
 
     # Set Plate header
     new_project.plate_header = args.header
