@@ -1710,10 +1710,10 @@ def main():
     parser.add_argument("-welding", "--welding", action='store_true',
                         help="Add T's for welding")
 
-    parser.add_argument("-conc",     "--conc",  type=float, default=100,
+    parser.add_argument("-conc",     "--conc",  type=float, default=150,
                         help="Oligo concentration in Source plates (uM)")
 
-    parser.add_argument("-vol96",    "--vol96", type=float, default=400,
+    parser.add_argument("-vol96",    "--vol96", type=float, default=300,
                         help="Volume of final stocks from 96well plate order (ul)")
 
     parser.add_argument("-ECHOnreps", "--ECHOnreps", type=int, default=1,
