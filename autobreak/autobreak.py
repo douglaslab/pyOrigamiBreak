@@ -806,7 +806,9 @@ class AutoBreak:
         ax2.set_visible(False)
 
         # Strip plot parameters
-        np.random.seed(2701) 
+        # Draw the jitter from a local generator so the plot stays reproducible without
+        # resetting the global stream that the rest of the run depends on.
+        plot_rng = np.random.default_rng(2701)
         x_jitter = .9
         strip_x_min = 1-x_jitter
         strip_x_max = 1+x_jitter
@@ -814,7 +816,7 @@ class AutoBreak:
         rel_tf = df['Tf'] - 50
         median_rel_tf = rel_tf.median()
 
-        x = np.random.uniform(strip_x_min, strip_x_max, size=len(df))
+        x = plot_rng.uniform(strip_x_min, strip_x_max, size=len(df))
         ax1.scatter(x, rel_tf, color=df['TfColor'], label='50-Tf', linewidth=0.2, edgecolor='#666', s=30)
 
         # Draw a horizontal line and triangle markers at the median value
@@ -2447,7 +2449,10 @@ def run(is_notebook_session, args=None):
 
 
     # Set random seed in order to get the same results with the same set of parameters
+    # Both generators are seeded here, before any consumer runs: the scaffold sequence
+    # built by utilities.generate_random_sequence() draws from numpy's global generator.
     random.seed(random_seed)
+    np.random.seed(random_seed)
 
     # Create Origami object
     new_origami = origamidesign.Origami()
